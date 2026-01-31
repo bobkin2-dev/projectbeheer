@@ -142,6 +142,9 @@ const BibliotheekBeheer = ({ bibliotheek, leveranciers: propLeveranciers, onRefr
   const [uitgebreideWeergave, setUitgebreideWeergave] = useState(false)
   const [nieuweLeverancier, setNieuweLeverancier] = useState('')
   const [leveranciers, setLeveranciers] = useState([])
+  const [editItem, setEditItem] = useState(null) // Item being edited in modal
+  const [editForm, setEditForm] = useState({})
+  const [prijsMode, setPrijsMode] = useState('direct') // 'direct' of 'berekend'
   const fileInputRef = useRef(null)
 
   // Load leveranciers from Supabase
@@ -262,6 +265,52 @@ const BibliotheekBeheer = ({ bibliotheek, leveranciers: propLeveranciers, onRefr
     } catch (e) {
       alert('Fout bij verwijderen: ' + e.message)
     }
+  }
+
+  // Open edit modal
+  const openEditModal = (item) => {
+    setEditItem(item)
+    setEditForm({ ...item })
+    // Determine price mode based on existing data
+    if (item.catalogusprijs && item.catalogusprijs > 0) {
+      setPrijsMode('berekend')
+    } else {
+      setPrijsMode('direct')
+    }
+  }
+
+  // Save edit modal
+  const saveEditModal = async () => {
+    if (!editForm.naam) return
+    setSaving(true)
+    try {
+      let prijs = parseFloat(editForm.prijs) || 0
+
+      // If using calculated mode, recalculate price
+      if (prijsMode === 'berekend') {
+        const catalogusprijs = parseFloat(editForm.catalogusprijs) || 0
+        const korting = parseFloat(editForm.korting) || 0
+        prijs = catalogusprijs * (1 - korting / 100)
+      }
+
+      await supabase.from('bibliotheek').update({
+        artikelnummer: editForm.artikelnummer || null,
+        naam: editForm.naam,
+        omschrijving: editForm.omschrijving || null,
+        eenheid: editForm.eenheid,
+        subcategorie: editForm.subcategorie || null,
+        catalogusprijs: prijsMode === 'berekend' ? (parseFloat(editForm.catalogusprijs) || 0) : 0,
+        korting: prijsMode === 'berekend' ? (parseFloat(editForm.korting) || 0) : 0,
+        prijs: prijs,
+        leverancier: editForm.leverancier || null
+      }).eq('id', editItem.id)
+
+      setEditItem(null)
+      onRefresh()
+    } catch (e) {
+      alert('Fout bij opslaan: ' + e.message)
+    }
+    setSaving(false)
   }
 
   // Excel Import Functions
@@ -520,52 +569,29 @@ const BibliotheekBeheer = ({ bibliotheek, leveranciers: propLeveranciers, onRefr
           </thead>
           <tbody>
             {gefilterdeItems.map(item => (
-              <tr key={item.id} className="border-t hover:bg-gray-50">
+              <tr key={item.id} className="border-t hover:bg-blue-50 cursor-pointer" onClick={() => openEditModal(item)}>
                 {uitgebreideWeergave && (
-                  <td className="p-2">
-                    <input type="text" value={item.artikelnummer || ''} onChange={(e) => updateItem(item.id, 'artikelnummer', e.target.value)} className="w-full border rounded px-2 py-1 text-xs" placeholder="-" />
-                  </td>
+                  <td className="p-2 text-xs text-gray-600">{item.artikelnummer || '-'}</td>
                 )}
-                <td className="p-2">
-                  <input type="text" value={item.naam} onChange={(e) => updateItem(item.id, 'naam', e.target.value)} className="w-full border rounded px-2 py-1" />
-                </td>
+                <td className="p-2 font-medium">{item.naam}</td>
                 {uitgebreideWeergave && (
-                  <td className="p-2">
-                    <input type="text" value={item.omschrijving || ''} onChange={(e) => updateItem(item.id, 'omschrijving', e.target.value)} className="w-full border rounded px-2 py-1 text-xs" placeholder="-" />
-                  </td>
+                  <td className="p-2 text-xs text-gray-500">{item.omschrijving || '-'}</td>
                 )}
-                <td className="p-2">
-                  <select value={item.eenheid} onChange={(e) => updateItem(item.id, 'eenheid', e.target.value)} className="w-full border rounded px-1 py-1 text-xs">
-                    {eenheden.map(e => <option key={e} value={e}>{e}</option>)}
-                  </select>
-                </td>
+                <td className="p-2 text-xs">{item.eenheid}</td>
                 {uitgebreideWeergave && (
-                  <td className="p-2">
-                    <input type="text" value={item.subcategorie || ''} onChange={(e) => updateItem(item.id, 'subcategorie', e.target.value)} className="w-full border rounded px-2 py-1 text-xs" placeholder="-" />
-                  </td>
+                  <td className="p-2 text-xs">{item.subcategorie || '-'}</td>
                 )}
                 {uitgebreideWeergave && (
-                  <td className="p-2">
-                    <input type="number" step="0.01" value={item.catalogusprijs || ''} onChange={(e) => updateItem(item.id, 'catalogusprijs', e.target.value)} className="w-full border rounded px-2 py-1 text-right text-xs" />
-                  </td>
+                  <td className="p-2 text-right text-xs">€{(item.catalogusprijs || 0).toFixed(2)}</td>
                 )}
                 {uitgebreideWeergave && (
-                  <td className="p-2">
-                    <input type="number" step="0.1" value={item.korting || ''} onChange={(e) => updateItem(item.id, 'korting', e.target.value)} className="w-full border rounded px-2 py-1 text-right text-xs" />
-                  </td>
+                  <td className="p-2 text-right text-xs">{item.korting ? `${item.korting}%` : '-'}</td>
                 )}
-                <td className="p-2">
-                  <input type="number" step="0.01" value={item.prijs || ''} onChange={(e) => updateItem(item.id, 'prijs', e.target.value)} className="w-full border rounded px-2 py-1 text-right" />
-                </td>
+                <td className="p-2 text-right font-medium">€{(item.prijs || 0).toFixed(2)}</td>
                 {!uitgebreideWeergave && (
-                  <td className="p-2">
-                    <select value={item.leverancier || ''} onChange={(e) => updateItem(item.id, 'leverancier', e.target.value)} className="w-full border rounded px-1 py-1 text-xs">
-                      <option value="">-</option>
-                      {leveranciers.map(l => <option key={l.id} value={l.naam}>{l.naam}</option>)}
-                    </select>
-                  </td>
+                  <td className="p-2 text-xs text-gray-600">{item.leverancier || '-'}</td>
                 )}
-                <td className="p-2">
+                <td className="p-2" onClick={(e) => e.stopPropagation()}>
                   <button onClick={() => deleteItem(item.id)} className="text-red-500 hover:text-red-700">🗑️</button>
                 </td>
               </tr>
@@ -678,6 +704,189 @@ const BibliotheekBeheer = ({ bibliotheek, leveranciers: propLeveranciers, onRefr
               <button onClick={handleImport} disabled={importing} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
                 {importing ? 'Importeren...' : `Importeer ${importData.rows.length} items`}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Item Modal */}
+      {editItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold">✏️ Item bewerken</h3>
+              <button onClick={() => setEditItem(null)} className="text-gray-500 hover:text-gray-700 text-xl">✕</button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              {/* Artikelnummer & Naam */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Artikelnummer</label>
+                  <input
+                    type="text"
+                    value={editForm.artikelnummer || ''}
+                    onChange={(e) => setEditForm({ ...editForm, artikelnummer: e.target.value })}
+                    className="w-full border rounded px-3 py-2"
+                    placeholder="Art.nr"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs text-gray-500 mb-1">Naam *</label>
+                  <input
+                    type="text"
+                    value={editForm.naam || ''}
+                    onChange={(e) => setEditForm({ ...editForm, naam: e.target.value })}
+                    className="w-full border rounded px-3 py-2"
+                    placeholder="Naam"
+                  />
+                </div>
+              </div>
+
+              {/* Omschrijving */}
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Omschrijving</label>
+                <input
+                  type="text"
+                  value={editForm.omschrijving || ''}
+                  onChange={(e) => setEditForm({ ...editForm, omschrijving: e.target.value })}
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="Omschrijving"
+                />
+              </div>
+
+              {/* Eenheid, Subcategorie, Leverancier */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Eenheid</label>
+                  <select
+                    value={editForm.eenheid || 'stuk'}
+                    onChange={(e) => setEditForm({ ...editForm, eenheid: e.target.value })}
+                    className="w-full border rounded px-3 py-2"
+                  >
+                    {eenheden.map(e => <option key={e} value={e}>{e}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Subcategorie</label>
+                  <input
+                    type="text"
+                    value={editForm.subcategorie || ''}
+                    onChange={(e) => setEditForm({ ...editForm, subcategorie: e.target.value })}
+                    className="w-full border rounded px-3 py-2"
+                    placeholder="Subcategorie"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">Leverancier</label>
+                  <select
+                    value={editForm.leverancier || ''}
+                    onChange={(e) => setEditForm({ ...editForm, leverancier: e.target.value })}
+                    className="w-full border rounded px-3 py-2"
+                  >
+                    <option value="">-</option>
+                    {leveranciers.map(l => <option key={l.id} value={l.naam}>{l.naam}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Prijs invoer mode */}
+              <div className="border-t pt-4">
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => setPrijsMode('direct')}
+                    className={`px-3 py-1.5 rounded text-sm ${prijsMode === 'direct' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
+                  >
+                    💰 Directe prijs
+                  </button>
+                  <button
+                    onClick={() => setPrijsMode('berekend')}
+                    className={`px-3 py-1.5 rounded text-sm ${prijsMode === 'berekend' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}
+                  >
+                    🧮 Catalogusprijs + Korting
+                  </button>
+                </div>
+
+                {prijsMode === 'direct' ? (
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Prijs €</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editForm.prijs || ''}
+                      onChange={(e) => setEditForm({ ...editForm, prijs: e.target.value })}
+                      className="w-full border rounded px-3 py-2 text-lg font-medium"
+                      placeholder="0.00"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Catalogusprijs €</label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={editForm.catalogusprijs || ''}
+                          onChange={(e) => {
+                            const catalogusprijs = parseFloat(e.target.value) || 0
+                            const korting = parseFloat(editForm.korting) || 0
+                            setEditForm({
+                              ...editForm,
+                              catalogusprijs: e.target.value,
+                              prijs: (catalogusprijs * (1 - korting / 100)).toFixed(2)
+                            })
+                          }}
+                          className="w-full border rounded px-3 py-2"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 mb-1">Korting %</label>
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={editForm.korting || ''}
+                          onChange={(e) => {
+                            const catalogusprijs = parseFloat(editForm.catalogusprijs) || 0
+                            const korting = parseFloat(e.target.value) || 0
+                            setEditForm({
+                              ...editForm,
+                              korting: e.target.value,
+                              prijs: (catalogusprijs * (1 - korting / 100)).toFixed(2)
+                            })
+                          }}
+                          className="w-full border rounded px-3 py-2"
+                          placeholder="0"
+                        />
+                      </div>
+                    </div>
+                    <div className="bg-green-50 rounded-lg p-3 flex justify-between items-center">
+                      <span className="text-gray-600">Berekende eindprijs:</span>
+                      <span className="text-xl font-bold text-green-600">
+                        €{((parseFloat(editForm.catalogusprijs) || 0) * (1 - (parseFloat(editForm.korting) || 0) / 100)).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex justify-between p-4 border-t bg-gray-50">
+              <button
+                onClick={() => { if (confirm('Weet je zeker dat je dit item wilt verwijderen?')) { deleteItem(editItem.id); setEditItem(null) } }}
+                className="px-4 py-2 text-red-600 hover:text-red-800"
+              >
+                🗑️ Verwijderen
+              </button>
+              <div className="flex gap-2">
+                <button onClick={() => setEditItem(null)} className="px-4 py-2 text-gray-600 hover:text-gray-800">
+                  Annuleren
+                </button>
+                <button onClick={saveEditModal} disabled={saving || !editForm.naam} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+                  {saving ? 'Opslaan...' : 'Opslaan'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
