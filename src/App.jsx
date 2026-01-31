@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from './supabase'
+import * as XLSX from 'xlsx'
 
 // =====================================================
 // CONSTANTEN
@@ -127,6 +128,11 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
   const [nieuwItem, setNieuwItem] = useState({ naam: '', eenheid: 'stuk', prijs: '', leverancier: '' })
   const [zoek, setZoek] = useState('')
   const [saving, setSaving] = useState(false)
+  const [showImport, setShowImport] = useState(false)
+  const [importData, setImportData] = useState(null)
+  const [columnMapping, setColumnMapping] = useState({})
+  const [importing, setImporting] = useState(false)
+  const fileInputRef = useRef(null)
 
   const items = bibliotheek.filter(i => i.categorie === activeCategorie)
   const gefilterdeItems = items.filter(item => item.naam.toLowerCase().includes(zoek.toLowerCase()))
@@ -168,6 +174,89 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
     }
   }
 
+  // Excel Import Functions
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
+
+        if (jsonData.length < 2) {
+          alert('Excel bestand bevat geen data')
+          return
+        }
+
+        const headers = jsonData[0]
+        const rows = jsonData.slice(1).filter(row => row.some(cell => cell !== undefined && cell !== ''))
+
+        // Auto-mapping
+        const autoMapping = {}
+        headers.forEach((header, index) => {
+          const h = String(header).toLowerCase()
+          if (h.includes('naam') || h.includes('name') || h.includes('omschrijving') || h.includes('artikel')) autoMapping.naam = index
+          else if (h.includes('eenheid') || h.includes('unit')) autoMapping.eenheid = index
+          else if (h.includes('prijs') || h.includes('price') || h.includes('kost')) autoMapping.prijs = index
+          else if (h.includes('leverancier') || h.includes('supplier')) autoMapping.leverancier = index
+        })
+
+        setColumnMapping(autoMapping)
+        setImportData({ headers, rows })
+        setShowImport(true)
+      } catch (err) {
+        alert('Fout bij lezen Excel: ' + err.message)
+      }
+    }
+    reader.readAsArrayBuffer(file)
+    e.target.value = ''
+  }
+
+  const handleImport = async () => {
+    if (columnMapping.naam === undefined) {
+      alert('Koppel minstens de kolom "Naam"')
+      return
+    }
+
+    setImporting(true)
+    try {
+      const items = importData.rows.map(row => {
+        const getValue = (key) => columnMapping[key] !== undefined ? row[columnMapping[key]] : null
+        const prijs = getValue('prijs')
+
+        return {
+          categorie: activeCategorie,
+          naam: String(getValue('naam') || '').trim(),
+          eenheid: getValue('eenheid') || 'stuk',
+          prijs: prijs ? parseFloat(String(prijs).replace(',', '.').replace(/[^0-9.-]/g, '')) || 0 : 0,
+          leverancier: getValue('leverancier') || null
+        }
+      }).filter(item => item.naam)
+
+      if (items.length === 0) {
+        alert('Geen geldige items gevonden')
+        setImporting(false)
+        return
+      }
+
+      const { error } = await supabase.from('bibliotheek').insert(items)
+      if (error) throw error
+
+      alert(`${items.length} items geïmporteerd!`)
+      setShowImport(false)
+      setImportData(null)
+      onRefresh()
+    } catch (e) {
+      alert('Import fout: ' + e.message)
+    }
+    setImporting(false)
+  }
+
   return (
     <div>
       <h2 className="text-lg font-semibold mb-4">📚 Bibliotheek</h2>
@@ -186,13 +275,19 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
         ))}
       </div>
 
-      <input
-        type="text"
-        value={zoek}
-        onChange={(e) => setZoek(e.target.value)}
-        placeholder="🔍 Zoeken..."
-        className="w-full border rounded-lg px-3 py-2 mb-4"
-      />
+      <div className="flex gap-2 mb-4">
+        <input
+          type="text"
+          value={zoek}
+          onChange={(e) => setZoek(e.target.value)}
+          placeholder="🔍 Zoeken..."
+          className="flex-1 border rounded-lg px-3 py-2"
+        />
+        <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".xlsx,.xls" className="hidden" />
+        <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
+          📥 Excel Import
+        </button>
+      </div>
 
       <div className="bg-white rounded-lg border overflow-hidden mb-4 overflow-x-auto">
         <table className="w-full text-sm">
@@ -244,6 +339,77 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
           </button>
         </div>
       </div>
+
+      {/* Excel Import Modal */}
+      {showImport && importData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold">📥 Excel Import naar {bibCategorieen.find(c => c.id === activeCategorie)?.label}</h3>
+              <button onClick={() => { setShowImport(false); setImportData(null) }} className="text-gray-500 hover:text-gray-700 text-xl">✕</button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4">
+              <div className="mb-4">
+                <h4 className="font-medium mb-2">Koppel Excel kolommen:</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {[
+                    { key: 'naam', label: 'Naam *', required: true },
+                    { key: 'eenheid', label: 'Eenheid' },
+                    { key: 'prijs', label: 'Prijs' },
+                    { key: 'leverancier', label: 'Leverancier' }
+                  ].map(field => (
+                    <div key={field.key} className="flex items-center gap-2">
+                      <label className="w-28 text-sm">{field.label}</label>
+                      <select
+                        value={columnMapping[field.key] ?? ''}
+                        onChange={(e) => setColumnMapping({ ...columnMapping, [field.key]: e.target.value === '' ? undefined : parseInt(e.target.value) })}
+                        className="flex-1 border rounded px-2 py-1.5 text-sm"
+                      >
+                        <option value="">-- Niet gekoppeld --</option>
+                        {importData.headers.map((h, i) => <option key={i} value={i}>{h}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h4 className="font-medium mb-2">Preview (eerste 5 van {importData.rows.length} rijen):</h4>
+                <div className="overflow-x-auto border rounded">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        {importData.headers.map((h, i) => (
+                          <th key={i} className="px-3 py-2 text-left font-medium text-gray-600">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importData.rows.slice(0, 5).map((row, ri) => (
+                        <tr key={ri} className="border-t">
+                          {importData.headers.map((_, ci) => (
+                            <td key={ci} className="px-3 py-2">{row[ci] ?? ''}</td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 p-4 border-t bg-gray-50">
+              <button onClick={() => { setShowImport(false); setImportData(null) }} className="px-4 py-2 text-gray-600 hover:text-gray-800">
+                Annuleren
+              </button>
+              <button onClick={handleImport} disabled={importing} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
+                {importing ? 'Importeren...' : `Importeer ${importData.rows.length} items`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
