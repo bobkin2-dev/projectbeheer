@@ -11,8 +11,8 @@ const eenheden = ['stuk', 'plaat', 'meter', 'uur', 'dag', 'm²', 'm³', 'kg', 's
 const bibCategorieen = [
   { id: 'materialen', label: '📦 Materialen', icon: '📦' },
   { id: 'arbeid', label: '👷 Arbeid', icon: '👷' },
-  { id: 'onderaanneming', label: '🤝 Onderaanneming', icon: '🤝' },
-  { id: 'materieel', label: '🚛 Materieel', icon: '🚛' }
+  { id: 'materieel', label: '🚛 Materieel', icon: '🚛' },
+  { id: 'onderaanneming', label: '🤝 Onderaanneming', icon: '🤝' }
 ]
 
 const offerteStatusConfig = {
@@ -123,32 +123,109 @@ const UrenInput = ({ uren = {}, onChange, disabled }) => {
 // =====================================================
 // BIBLIOTHEEK BEHEER
 // =====================================================
-const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
+const BibliotheekBeheer = ({ bibliotheek, leveranciers: propLeveranciers, onRefresh }) => {
   const [activeCategorie, setActiveCategorie] = useState('materialen')
-  const [nieuwItem, setNieuwItem] = useState({ naam: '', eenheid: 'stuk', prijs: '', leverancier: '' })
+  const [activeLeverancier, setActiveLeverancier] = useState(null)
+  const [activeSubcategorie, setActiveSubcategorie] = useState(null)
+  const [nieuwItem, setNieuwItem] = useState({
+    artikelnummer: '', naam: '', omschrijving: '', eenheid: 'stuk',
+    subcategorie: '', catalogusprijs: '', korting: '', eindprijs: '', leverancier: ''
+  })
   const [zoek, setZoek] = useState('')
   const [saving, setSaving] = useState(false)
   const [showImport, setShowImport] = useState(false)
+  const [showLeverancierBeheer, setShowLeverancierBeheer] = useState(false)
   const [importData, setImportData] = useState(null)
   const [columnMapping, setColumnMapping] = useState({})
   const [importing, setImporting] = useState(false)
+  const [expandedLeveranciers, setExpandedLeveranciers] = useState({})
+  const [uitgebreideWeergave, setUitgebreideWeergave] = useState(false)
+  const [nieuweLeverancier, setNieuweLeverancier] = useState('')
+  const [leveranciers, setLeveranciers] = useState([])
   const fileInputRef = useRef(null)
 
+  // Load leveranciers from Supabase
+  useEffect(() => {
+    loadLeveranciers()
+  }, [])
+
+  const loadLeveranciers = async () => {
+    try {
+      const { data } = await supabase.from('leveranciers').select('*').order('naam')
+      setLeveranciers(data || [])
+    } catch (e) {
+      console.error('Fout bij laden leveranciers:', e)
+    }
+  }
+
   const items = bibliotheek.filter(i => i.categorie === activeCategorie)
-  const gefilterdeItems = items.filter(item => item.naam.toLowerCase().includes(zoek.toLowerCase()))
+
+  // Get unique leveranciers for materialen
+  const materialenLeveranciers = activeCategorie === 'materialen'
+    ? [...new Set(items.map(i => i.leverancier).filter(Boolean))].sort()
+    : []
+
+  // Get subcategorieën for selected leverancier
+  const subcategorieen = activeLeverancier
+    ? [...new Set(items.filter(i => i.leverancier === activeLeverancier).map(i => i.subcategorie).filter(Boolean))].sort()
+    : []
+
+  const gefilterdeItems = items.filter(item => {
+    const matchZoek = zoek === '' ||
+      item.naam?.toLowerCase().includes(zoek.toLowerCase()) ||
+      item.artikelnummer?.toLowerCase().includes(zoek.toLowerCase()) ||
+      item.omschrijving?.toLowerCase().includes(zoek.toLowerCase())
+    const matchLeverancier = !activeLeverancier || item.leverancier === activeLeverancier
+    const matchSubcategorie = !activeSubcategorie || item.subcategorie === activeSubcategorie
+    return matchZoek && matchLeverancier && matchSubcategorie
+  })
+
+  // Leverancier CRUD
+  const addLeverancier = async () => {
+    if (!nieuweLeverancier.trim()) return
+    try {
+      await supabase.from('leveranciers').insert({ naam: nieuweLeverancier.trim() })
+      setNieuweLeverancier('')
+      loadLeveranciers()
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+  }
+
+  const deleteLeverancier = async (id) => {
+    if (!confirm('Weet je zeker dat je deze leverancier wilt verwijderen?')) return
+    try {
+      await supabase.from('leveranciers').delete().eq('id', id)
+      loadLeveranciers()
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+  }
 
   const addItem = async () => {
-    if (!nieuwItem.naam || !nieuwItem.prijs) return
+    if (!nieuwItem.naam) return
     setSaving(true)
     try {
+      const catalogusprijs = parseFloat(nieuwItem.catalogusprijs) || 0
+      const korting = parseFloat(nieuwItem.korting) || 0
+      const eindprijs = nieuwItem.eindprijs ? parseFloat(nieuwItem.eindprijs) : catalogusprijs * (1 - korting / 100)
+
       await supabase.from('bibliotheek').insert({
         categorie: activeCategorie,
+        artikelnummer: nieuwItem.artikelnummer || null,
         naam: nieuwItem.naam,
+        omschrijving: nieuwItem.omschrijving || null,
         eenheid: nieuwItem.eenheid,
-        prijs: parseFloat(nieuwItem.prijs),
+        subcategorie: nieuwItem.subcategorie || null,
+        catalogusprijs: catalogusprijs,
+        korting: korting,
+        prijs: eindprijs,
         leverancier: nieuwItem.leverancier || null
       })
-      setNieuwItem({ naam: '', eenheid: 'stuk', prijs: '', leverancier: '' })
+      setNieuwItem({
+        artikelnummer: '', naam: '', omschrijving: '', eenheid: 'stuk',
+        subcategorie: '', catalogusprijs: '', korting: '', eindprijs: '', leverancier: ''
+      })
       onRefresh()
     } catch (e) {
       alert('Fout bij toevoegen: ' + e.message)
@@ -158,7 +235,20 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
 
   const updateItem = async (id, field, value) => {
     try {
-      await supabase.from('bibliotheek').update({ [field]: field === 'prijs' ? parseFloat(value) || 0 : value }).eq('id', id)
+      let updateData = { [field]: value }
+
+      // Als catalogusprijs of korting wijzigt, bereken eindprijs opnieuw
+      if (field === 'catalogusprijs' || field === 'korting') {
+        const item = bibliotheek.find(i => i.id === id)
+        const catalogusprijs = field === 'catalogusprijs' ? parseFloat(value) || 0 : (item?.catalogusprijs || 0)
+        const korting = field === 'korting' ? parseFloat(value) || 0 : (item?.korting || 0)
+        updateData.prijs = catalogusprijs * (1 - korting / 100)
+        updateData[field] = parseFloat(value) || 0
+      } else if (field === 'prijs') {
+        updateData.prijs = parseFloat(value) || 0
+      }
+
+      await supabase.from('bibliotheek').update(updateData).eq('id', id)
       onRefresh()
     } catch (e) {
       alert('Fout bij updaten: ' + e.message)
@@ -200,10 +290,14 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
         const autoMapping = {}
         headers.forEach((header, index) => {
           const h = String(header).toLowerCase()
-          if (h.includes('naam') || h.includes('name') || h.includes('omschrijving') || h.includes('artikel')) autoMapping.naam = index
+          if (h.includes('artikelnr') || h.includes('article') || h.includes('artnr')) autoMapping.artikelnummer = index
+          else if (h.includes('naam') || h.includes('name') || h.includes('product')) autoMapping.naam = index
+          else if (h.includes('omschrijving') || h.includes('description') || h.includes('desc')) autoMapping.omschrijving = index
           else if (h.includes('eenheid') || h.includes('unit')) autoMapping.eenheid = index
-          else if (h.includes('prijs') || h.includes('price') || h.includes('kost')) autoMapping.prijs = index
-          else if (h.includes('leverancier') || h.includes('supplier')) autoMapping.leverancier = index
+          else if (h.includes('categorie') || h.includes('category') || h.includes('groep')) autoMapping.subcategorie = index
+          else if (h.includes('catalogus') || h.includes('bruto') || h.includes('lijst')) autoMapping.catalogusprijs = index
+          else if (h.includes('korting') || h.includes('discount')) autoMapping.korting = index
+          else if (h.includes('eind') || h.includes('netto') || h.includes('prijs') || h.includes('price')) autoMapping.eindprijs = index
         })
 
         setColumnMapping(autoMapping)
@@ -225,29 +319,41 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
 
     setImporting(true)
     try {
-      const items = importData.rows.map(row => {
+      const parseNum = (val) => {
+        if (val === null || val === undefined || val === '') return 0
+        return parseFloat(String(val).replace(',', '.').replace(/[^0-9.-]/g, '')) || 0
+      }
+
+      const importItems = importData.rows.map(row => {
         const getValue = (key) => columnMapping[key] !== undefined ? row[columnMapping[key]] : null
-        const prijs = getValue('prijs')
+        const catalogusprijs = parseNum(getValue('catalogusprijs'))
+        const korting = parseNum(getValue('korting'))
+        const eindprijs = getValue('eindprijs') ? parseNum(getValue('eindprijs')) : catalogusprijs * (1 - korting / 100)
 
         return {
           categorie: activeCategorie,
+          artikelnummer: getValue('artikelnummer') ? String(getValue('artikelnummer')).trim() : null,
           naam: String(getValue('naam') || '').trim(),
+          omschrijving: getValue('omschrijving') ? String(getValue('omschrijving')).trim() : null,
           eenheid: getValue('eenheid') || 'stuk',
-          prijs: prijs ? parseFloat(String(prijs).replace(',', '.').replace(/[^0-9.-]/g, '')) || 0 : 0,
-          leverancier: getValue('leverancier') || null
+          subcategorie: getValue('subcategorie') ? String(getValue('subcategorie')).trim() : null,
+          catalogusprijs: catalogusprijs,
+          korting: korting,
+          prijs: eindprijs,
+          leverancier: activeLeverancier || null
         }
       }).filter(item => item.naam)
 
-      if (items.length === 0) {
+      if (importItems.length === 0) {
         alert('Geen geldige items gevonden')
         setImporting(false)
         return
       }
 
-      const { error } = await supabase.from('bibliotheek').insert(items)
+      const { error } = await supabase.from('bibliotheek').insert(importItems)
       if (error) throw error
 
-      alert(`${items.length} items geïmporteerd!`)
+      alert(`${importItems.length} items geïmporteerd!`)
       setShowImport(false)
       setImportData(null)
       onRefresh()
@@ -257,15 +363,72 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
     setImporting(false)
   }
 
+  const toggleLeverancier = (lev) => {
+    if (activeLeverancier === lev) {
+      setActiveLeverancier(null)
+      setActiveSubcategorie(null)
+    } else {
+      setActiveLeverancier(lev)
+      setActiveSubcategorie(null)
+    }
+  }
+
   return (
     <div>
-      <h2 className="text-lg font-semibold mb-4">📚 Bibliotheek</h2>
-      
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-lg font-semibold">📚 Bibliotheek</h2>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setUitgebreideWeergave(!uitgebreideWeergave)}
+            className={`px-3 py-1.5 rounded text-sm ${uitgebreideWeergave ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}
+          >
+            {uitgebreideWeergave ? '📋 Uitgebreid' : '📄 Compact'}
+          </button>
+          <button
+            onClick={() => setShowLeverancierBeheer(!showLeverancierBeheer)}
+            className="px-3 py-1.5 bg-gray-100 rounded text-sm hover:bg-gray-200"
+          >
+            ⚙️ Leveranciers
+          </button>
+        </div>
+      </div>
+
+      {/* Leverancier Beheer Modal */}
+      {showLeverancierBeheer && (
+        <div className="bg-yellow-50 rounded-lg border border-yellow-200 p-4 mb-4">
+          <div className="flex justify-between items-center mb-3">
+            <h4 className="font-medium">🏢 Leveranciers beheren</h4>
+            <button onClick={() => setShowLeverancierBeheer(false)} className="text-gray-500">✕</button>
+          </div>
+          <div className="flex gap-2 mb-3">
+            <input
+              type="text"
+              value={nieuweLeverancier}
+              onChange={(e) => setNieuweLeverancier(e.target.value)}
+              placeholder="Nieuwe leverancier..."
+              className="flex-1 border rounded px-3 py-2"
+              onKeyDown={(e) => e.key === 'Enter' && addLeverancier()}
+            />
+            <button onClick={addLeverancier} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">+</button>
+          </div>
+          <div className="space-y-1 max-h-48 overflow-y-auto">
+            {leveranciers.map(lev => (
+              <div key={lev.id} className="flex justify-between items-center bg-white rounded px-3 py-2 border">
+                <span>{lev.naam}</span>
+                <button onClick={() => deleteLeverancier(lev.id)} className="text-red-500 hover:text-red-700">🗑️</button>
+              </div>
+            ))}
+            {leveranciers.length === 0 && <p className="text-gray-500 text-sm">Nog geen leveranciers</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Hoofdcategorieën */}
       <div className="flex flex-wrap gap-2 mb-4">
         {bibCategorieen.map(cat => (
           <button
             key={cat.id}
-            onClick={() => setActiveCategorie(cat.id)}
+            onClick={() => { setActiveCategorie(cat.id); setActiveLeverancier(null); setActiveSubcategorie(null) }}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
               activeCategorie === cat.id ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'
             }`}
@@ -275,6 +438,55 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
         ))}
       </div>
 
+      {/* Leverancier subcategorieën (alleen bij Materialen) */}
+      {activeCategorie === 'materialen' && materialenLeveranciers.length > 0 && (
+        <div className="bg-gray-50 rounded-lg p-3 mb-4">
+          <div className="text-xs text-gray-500 mb-2">Leveranciers:</div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => { setActiveLeverancier(null); setActiveSubcategorie(null) }}
+              className={`px-3 py-1.5 rounded text-sm ${!activeLeverancier ? 'bg-blue-500 text-white' : 'bg-white border hover:bg-gray-100'}`}
+            >
+              Alle ({items.length})
+            </button>
+            {materialenLeveranciers.map(lev => (
+              <button
+                key={lev}
+                onClick={() => toggleLeverancier(lev)}
+                className={`px-3 py-1.5 rounded text-sm ${activeLeverancier === lev ? 'bg-blue-500 text-white' : 'bg-white border hover:bg-gray-100'}`}
+              >
+                {lev} ({items.filter(i => i.leverancier === lev).length})
+              </button>
+            ))}
+          </div>
+
+          {/* Subcategorieën binnen leverancier */}
+          {activeLeverancier && subcategorieen.length > 0 && (
+            <div className="mt-3 pt-3 border-t">
+              <div className="text-xs text-gray-500 mb-2">Subcategorieën:</div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setActiveSubcategorie(null)}
+                  className={`px-2 py-1 rounded text-xs ${!activeSubcategorie ? 'bg-green-500 text-white' : 'bg-white border'}`}
+                >
+                  Alle
+                </button>
+                {subcategorieen.map(sub => (
+                  <button
+                    key={sub}
+                    onClick={() => setActiveSubcategorie(sub)}
+                    className={`px-2 py-1 rounded text-xs ${activeSubcategorie === sub ? 'bg-green-500 text-white' : 'bg-white border'}`}
+                  >
+                    {sub}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Zoeken en Import */}
       <div className="flex gap-2 mb-4">
         <input
           type="text"
@@ -289,52 +501,102 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
         </button>
       </div>
 
+      {/* Items tabel */}
       <div className="bg-white rounded-lg border overflow-hidden mb-4 overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
+              {uitgebreideWeergave && <th className="text-left p-3 w-28">Artikelnr</th>}
               <th className="text-left p-3">Naam</th>
-              <th className="text-left p-3 w-24">Eenheid</th>
-              <th className="text-right p-3 w-28">Prijs €</th>
-              <th className="text-left p-3 w-32">Leverancier</th>
-              <th className="w-16"></th>
+              {uitgebreideWeergave && <th className="text-left p-3">Omschrijving</th>}
+              <th className="text-left p-3 w-20">Eenheid</th>
+              {uitgebreideWeergave && <th className="text-left p-3 w-28">Subcategorie</th>}
+              {uitgebreideWeergave && <th className="text-right p-3 w-28">Catalogus €</th>}
+              {uitgebreideWeergave && <th className="text-right p-3 w-20">Korting %</th>}
+              <th className="text-right p-3 w-28">{uitgebreideWeergave ? 'Eindprijs €' : 'Prijs €'}</th>
+              {!uitgebreideWeergave && <th className="text-left p-3 w-32">Leverancier</th>}
+              <th className="w-12"></th>
             </tr>
           </thead>
           <tbody>
             {gefilterdeItems.map(item => (
               <tr key={item.id} className="border-t hover:bg-gray-50">
-                <td className="p-3">
+                {uitgebreideWeergave && (
+                  <td className="p-2">
+                    <input type="text" value={item.artikelnummer || ''} onChange={(e) => updateItem(item.id, 'artikelnummer', e.target.value)} className="w-full border rounded px-2 py-1 text-xs" placeholder="-" />
+                  </td>
+                )}
+                <td className="p-2">
                   <input type="text" value={item.naam} onChange={(e) => updateItem(item.id, 'naam', e.target.value)} className="w-full border rounded px-2 py-1" />
                 </td>
-                <td className="p-3">
-                  <select value={item.eenheid} onChange={(e) => updateItem(item.id, 'eenheid', e.target.value)} className="w-full border rounded px-2 py-1">
+                {uitgebreideWeergave && (
+                  <td className="p-2">
+                    <input type="text" value={item.omschrijving || ''} onChange={(e) => updateItem(item.id, 'omschrijving', e.target.value)} className="w-full border rounded px-2 py-1 text-xs" placeholder="-" />
+                  </td>
+                )}
+                <td className="p-2">
+                  <select value={item.eenheid} onChange={(e) => updateItem(item.id, 'eenheid', e.target.value)} className="w-full border rounded px-1 py-1 text-xs">
                     {eenheden.map(e => <option key={e} value={e}>{e}</option>)}
                   </select>
                 </td>
-                <td className="p-3">
-                  <input type="number" step="0.01" value={item.prijs} onChange={(e) => updateItem(item.id, 'prijs', e.target.value)} className="w-full border rounded px-2 py-1 text-right" />
+                {uitgebreideWeergave && (
+                  <td className="p-2">
+                    <input type="text" value={item.subcategorie || ''} onChange={(e) => updateItem(item.id, 'subcategorie', e.target.value)} className="w-full border rounded px-2 py-1 text-xs" placeholder="-" />
+                  </td>
+                )}
+                {uitgebreideWeergave && (
+                  <td className="p-2">
+                    <input type="number" step="0.01" value={item.catalogusprijs || ''} onChange={(e) => updateItem(item.id, 'catalogusprijs', e.target.value)} className="w-full border rounded px-2 py-1 text-right text-xs" />
+                  </td>
+                )}
+                {uitgebreideWeergave && (
+                  <td className="p-2">
+                    <input type="number" step="0.1" value={item.korting || ''} onChange={(e) => updateItem(item.id, 'korting', e.target.value)} className="w-full border rounded px-2 py-1 text-right text-xs" />
+                  </td>
+                )}
+                <td className="p-2">
+                  <input type="number" step="0.01" value={item.prijs || ''} onChange={(e) => updateItem(item.id, 'prijs', e.target.value)} className="w-full border rounded px-2 py-1 text-right" />
                 </td>
-                <td className="p-3">
-                  <input type="text" value={item.leverancier || ''} onChange={(e) => updateItem(item.id, 'leverancier', e.target.value)} className="w-full border rounded px-2 py-1" placeholder="-" />
-                </td>
-                <td className="p-3">
+                {!uitgebreideWeergave && (
+                  <td className="p-2">
+                    <select value={item.leverancier || ''} onChange={(e) => updateItem(item.id, 'leverancier', e.target.value)} className="w-full border rounded px-1 py-1 text-xs">
+                      <option value="">-</option>
+                      {leveranciers.map(l => <option key={l.id} value={l.naam}>{l.naam}</option>)}
+                    </select>
+                  </td>
+                )}
+                <td className="p-2">
                   <button onClick={() => deleteItem(item.id)} className="text-red-500 hover:text-red-700">🗑️</button>
                 </td>
               </tr>
             ))}
+            {gefilterdeItems.length === 0 && (
+              <tr><td colSpan={uitgebreideWeergave ? 9 : 5} className="p-8 text-center text-gray-400">Geen items gevonden</td></tr>
+            )}
           </tbody>
         </table>
       </div>
 
+      {/* Nieuw item formulier */}
       <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-        <h4 className="font-medium mb-3">+ Nieuw item</h4>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
-          <input type="text" value={nieuwItem.naam} onChange={(e) => setNieuwItem({ ...nieuwItem, naam: e.target.value })} placeholder="Naam" className="border rounded px-3 py-2 lg:col-span-2" />
-          <select value={nieuwItem.eenheid} onChange={(e) => setNieuwItem({ ...nieuwItem, eenheid: e.target.value })} className="border rounded px-3 py-2">
+        <h4 className="font-medium mb-3">+ Nieuw item toevoegen</h4>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 mb-3">
+          <input type="text" value={nieuwItem.artikelnummer} onChange={(e) => setNieuwItem({ ...nieuwItem, artikelnummer: e.target.value })} placeholder="Artikelnr" className="border rounded px-2 py-1.5 text-sm" />
+          <input type="text" value={nieuwItem.naam} onChange={(e) => setNieuwItem({ ...nieuwItem, naam: e.target.value })} placeholder="Naam *" className="border rounded px-2 py-1.5 text-sm lg:col-span-2" />
+          <select value={nieuwItem.eenheid} onChange={(e) => setNieuwItem({ ...nieuwItem, eenheid: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
             {eenheden.map(e => <option key={e} value={e}>{e}</option>)}
           </select>
-          <input type="number" step="0.01" value={nieuwItem.prijs} onChange={(e) => setNieuwItem({ ...nieuwItem, prijs: e.target.value })} placeholder="Prijs €" className="border rounded px-3 py-2" />
-          <button onClick={addItem} disabled={saving} className="bg-blue-600 text-white rounded px-4 py-2 hover:bg-blue-700 disabled:opacity-50">
+          <input type="number" step="0.01" value={nieuwItem.catalogusprijs} onChange={(e) => setNieuwItem({ ...nieuwItem, catalogusprijs: e.target.value })} placeholder="Catalogusprijs" className="border rounded px-2 py-1.5 text-sm" />
+          <input type="number" step="0.1" value={nieuwItem.korting} onChange={(e) => setNieuwItem({ ...nieuwItem, korting: e.target.value })} placeholder="Korting %" className="border rounded px-2 py-1.5 text-sm" />
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <input type="text" value={nieuwItem.omschrijving} onChange={(e) => setNieuwItem({ ...nieuwItem, omschrijving: e.target.value })} placeholder="Omschrijving" className="border rounded px-2 py-1.5 text-sm" />
+          <input type="text" value={nieuwItem.subcategorie} onChange={(e) => setNieuwItem({ ...nieuwItem, subcategorie: e.target.value })} placeholder="Subcategorie" className="border rounded px-2 py-1.5 text-sm" />
+          <select value={nieuwItem.leverancier} onChange={(e) => setNieuwItem({ ...nieuwItem, leverancier: e.target.value })} className="border rounded px-2 py-1.5 text-sm">
+            <option value="">Leverancier...</option>
+            {leveranciers.map(l => <option key={l.id} value={l.naam}>{l.naam}</option>)}
+          </select>
+          <button onClick={addItem} disabled={saving || !nieuwItem.naam} className="bg-blue-600 text-white rounded px-4 py-1.5 text-sm hover:bg-blue-700 disabled:opacity-50">
             {saving ? '...' : 'Toevoegen'}
           </button>
         </div>
@@ -343,30 +605,40 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
       {/* Excel Import Modal */}
       {showImport && importData && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-xl shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="text-lg font-semibold">📥 Excel Import naar {bibCategorieen.find(c => c.id === activeCategorie)?.label}</h3>
+              <div>
+                <h3 className="text-lg font-semibold">📥 Excel Import</h3>
+                <p className="text-sm text-gray-500">
+                  Naar: {bibCategorieen.find(c => c.id === activeCategorie)?.label}
+                  {activeLeverancier && ` → ${activeLeverancier}`}
+                </p>
+              </div>
               <button onClick={() => { setShowImport(false); setImportData(null) }} className="text-gray-500 hover:text-gray-700 text-xl">✕</button>
             </div>
 
             <div className="flex-1 overflow-auto p-4">
               <div className="mb-4">
                 <h4 className="font-medium mb-2">Koppel Excel kolommen:</h4>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                   {[
-                    { key: 'naam', label: 'Naam *', required: true },
+                    { key: 'artikelnummer', label: 'Artikelnummer' },
+                    { key: 'naam', label: 'Naam *' },
+                    { key: 'omschrijving', label: 'Omschrijving' },
                     { key: 'eenheid', label: 'Eenheid' },
-                    { key: 'prijs', label: 'Prijs' },
-                    { key: 'leverancier', label: 'Leverancier' }
+                    { key: 'subcategorie', label: 'Subcategorie' },
+                    { key: 'catalogusprijs', label: 'Catalogusprijs' },
+                    { key: 'korting', label: 'Korting %' },
+                    { key: 'eindprijs', label: 'Eindprijs' }
                   ].map(field => (
-                    <div key={field.key} className="flex items-center gap-2">
-                      <label className="w-28 text-sm">{field.label}</label>
+                    <div key={field.key}>
+                      <label className="block text-xs text-gray-500 mb-1">{field.label}</label>
                       <select
                         value={columnMapping[field.key] ?? ''}
                         onChange={(e) => setColumnMapping({ ...columnMapping, [field.key]: e.target.value === '' ? undefined : parseInt(e.target.value) })}
-                        className="flex-1 border rounded px-2 py-1.5 text-sm"
+                        className="w-full border rounded px-2 py-1.5 text-sm"
                       >
-                        <option value="">-- Niet gekoppeld --</option>
+                        <option value="">--</option>
                         {importData.headers.map((h, i) => <option key={i} value={i}>{h}</option>)}
                       </select>
                     </div>
@@ -377,11 +649,11 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
               <div>
                 <h4 className="font-medium mb-2">Preview (eerste 5 van {importData.rows.length} rijen):</h4>
                 <div className="overflow-x-auto border rounded">
-                  <table className="min-w-full text-sm">
+                  <table className="min-w-full text-xs">
                     <thead className="bg-gray-50">
                       <tr>
                         {importData.headers.map((h, i) => (
-                          <th key={i} className="px-3 py-2 text-left font-medium text-gray-600">{h}</th>
+                          <th key={i} className="px-2 py-1.5 text-left font-medium text-gray-600 whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
                     </thead>
@@ -389,7 +661,7 @@ const BibliotheekBeheer = ({ bibliotheek, onRefresh }) => {
                       {importData.rows.slice(0, 5).map((row, ri) => (
                         <tr key={ri} className="border-t">
                           {importData.headers.map((_, ci) => (
-                            <td key={ci} className="px-3 py-2">{row[ci] ?? ''}</td>
+                            <td key={ci} className="px-2 py-1.5 whitespace-nowrap">{row[ci] ?? ''}</td>
                           ))}
                         </tr>
                       ))}
