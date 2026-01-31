@@ -145,6 +145,9 @@ const BibliotheekBeheer = ({ bibliotheek, leveranciers: propLeveranciers, onRefr
   const [editItem, setEditItem] = useState(null) // Item being edited in modal
   const [editForm, setEditForm] = useState({})
   const [prijsMode, setPrijsMode] = useState('direct') // 'direct' of 'berekend'
+  const [weergave, setWeergave] = useState('lijst') // 'lijst' of 'catalogus'
+  const [editSubcategorie, setEditSubcategorie] = useState(null) // For editing subcategory name
+  const [nieuweSubcategorie, setNieuweSubcategorie] = useState('')
   const fileInputRef = useRef(null)
 
   // Load leveranciers from Supabase
@@ -173,13 +176,18 @@ const BibliotheekBeheer = ({ bibliotheek, leveranciers: propLeveranciers, onRefr
     ? [...new Set(items.filter(i => i.leverancier === activeLeverancier).map(i => i.subcategorie).filter(Boolean))].sort()
     : []
 
-  const gefilterdeItems = items.filter(item => {
+  // In catalogus mode, altijd materialen tonen
+  const effectieveCategorie = weergave === 'catalogus' ? 'materialen' : activeCategorie
+  const effectieveItems = bibliotheek.filter(i => i.categorie === effectieveCategorie)
+
+  const gefilterdeItems = effectieveItems.filter(item => {
     const matchZoek = zoek === '' ||
       item.naam?.toLowerCase().includes(zoek.toLowerCase()) ||
       item.artikelnummer?.toLowerCase().includes(zoek.toLowerCase()) ||
       item.omschrijving?.toLowerCase().includes(zoek.toLowerCase())
     const matchLeverancier = !activeLeverancier || item.leverancier === activeLeverancier
-    const matchSubcategorie = !activeSubcategorie || item.subcategorie === activeSubcategorie
+    const matchSubcategorie = !activeSubcategorie || item.subcategorie === activeSubcategorie ||
+      (activeSubcategorie === 'Zonder subcategorie' && !item.subcategorie)
     return matchZoek && matchLeverancier && matchSubcategorie
   })
 
@@ -204,6 +212,60 @@ const BibliotheekBeheer = ({ bibliotheek, leveranciers: propLeveranciers, onRefr
       alert('Fout: ' + e.message)
     }
   }
+
+  const updateLeverancierNaam = async (id, nieuweNaam) => {
+    try {
+      await supabase.from('leveranciers').update({ naam: nieuweNaam }).eq('id', id)
+      loadLeveranciers()
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+  }
+
+  // Subcategorie functies
+  const renameSubcategorie = async (oudeNaam, nieuweNaam, leverancier) => {
+    if (!nieuweNaam.trim() || oudeNaam === nieuweNaam) return
+    try {
+      // Update all items with this subcategorie
+      await supabase.from('bibliotheek')
+        .update({ subcategorie: nieuweNaam.trim() })
+        .eq('subcategorie', oudeNaam)
+        .eq('leverancier', leverancier)
+      onRefresh()
+      setEditSubcategorie(null)
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+  }
+
+  const deleteSubcategorie = async (subcategorieNaam, leverancier) => {
+    if (!confirm(`Weet je zeker dat je subcategorie "${subcategorieNaam}" wilt verwijderen? De items blijven bestaan maar zonder subcategorie.`)) return
+    try {
+      await supabase.from('bibliotheek')
+        .update({ subcategorie: null })
+        .eq('subcategorie', subcategorieNaam)
+        .eq('leverancier', leverancier)
+      onRefresh()
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+  }
+
+  // Get all leveranciers with their subcategories and item counts
+  const getLeveranciersOverzicht = () => {
+    const overzicht = {}
+    bibliotheek.filter(i => i.categorie === 'materialen' && i.leverancier).forEach(item => {
+      if (!overzicht[item.leverancier]) {
+        overzicht[item.leverancier] = { totaal: 0, subcategorieen: {} }
+      }
+      overzicht[item.leverancier].totaal++
+      const sub = item.subcategorie || 'Zonder subcategorie'
+      overzicht[item.leverancier].subcategorieen[sub] = (overzicht[item.leverancier].subcategorieen[sub] || 0) + 1
+    })
+    return overzicht
+  }
+
+  const leveranciersOverzicht = getLeveranciersOverzicht()
 
   const addItem = async () => {
     if (!nieuwItem.naam) return
@@ -427,123 +489,364 @@ const BibliotheekBeheer = ({ bibliotheek, leveranciers: propLeveranciers, onRefr
       <div className="flex justify-between items-center mb-4">
         <h2 className="text-lg font-semibold">📚 Bibliotheek</h2>
         <div className="flex gap-2">
-          <button
-            onClick={() => setUitgebreideWeergave(!uitgebreideWeergave)}
-            className={`px-3 py-1.5 rounded text-sm ${uitgebreideWeergave ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}
-          >
-            {uitgebreideWeergave ? '📋 Uitgebreid' : '📄 Compact'}
-          </button>
+          {/* Weergave toggle */}
+          <div className="flex bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setWeergave('lijst')}
+              className={`px-3 py-1 rounded text-sm ${weergave === 'lijst' ? 'bg-white shadow' : ''}`}
+            >
+              📄 Lijst
+            </button>
+            <button
+              onClick={() => setWeergave('catalogus')}
+              className={`px-3 py-1 rounded text-sm ${weergave === 'catalogus' ? 'bg-white shadow' : ''}`}
+            >
+              📖 Catalogus
+            </button>
+          </div>
+          {weergave === 'lijst' && (
+            <button
+              onClick={() => setUitgebreideWeergave(!uitgebreideWeergave)}
+              className={`px-3 py-1.5 rounded text-sm ${uitgebreideWeergave ? 'bg-blue-100 text-blue-700' : 'bg-gray-100'}`}
+            >
+              {uitgebreideWeergave ? '📋 Uitgebreid' : '📄 Compact'}
+            </button>
+          )}
           <button
             onClick={() => setShowLeverancierBeheer(!showLeverancierBeheer)}
             className="px-3 py-1.5 bg-gray-100 rounded text-sm hover:bg-gray-200"
           >
-            ⚙️ Leveranciers
+            ⚙️ Beheer
           </button>
         </div>
       </div>
 
-      {/* Leverancier Beheer Modal */}
+      {/* Leverancier & Subcategorie Beheer Modal */}
       {showLeverancierBeheer && (
         <div className="bg-yellow-50 rounded-lg border border-yellow-200 p-4 mb-4">
           <div className="flex justify-between items-center mb-3">
-            <h4 className="font-medium">🏢 Leveranciers beheren</h4>
+            <h4 className="font-medium">🏢 Leveranciers & Subcategorieën beheren</h4>
             <button onClick={() => setShowLeverancierBeheer(false)} className="text-gray-500">✕</button>
           </div>
-          <div className="flex gap-2 mb-3">
+
+          {/* Nieuwe leverancier */}
+          <div className="flex gap-2 mb-4">
             <input
               type="text"
               value={nieuweLeverancier}
               onChange={(e) => setNieuweLeverancier(e.target.value)}
-              placeholder="Nieuwe leverancier..."
+              placeholder="Nieuwe leverancier toevoegen..."
               className="flex-1 border rounded px-3 py-2"
               onKeyDown={(e) => e.key === 'Enter' && addLeverancier()}
             />
-            <button onClick={addLeverancier} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">+</button>
+            <button onClick={addLeverancier} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">+ Leverancier</button>
           </div>
-          <div className="space-y-1 max-h-48 overflow-y-auto">
-            {leveranciers.map(lev => (
-              <div key={lev.id} className="flex justify-between items-center bg-white rounded px-3 py-2 border">
-                <span>{lev.naam}</span>
-                <button onClick={() => deleteLeverancier(lev.id)} className="text-red-500 hover:text-red-700">🗑️</button>
-              </div>
-            ))}
-            {leveranciers.length === 0 && <p className="text-gray-500 text-sm">Nog geen leveranciers</p>}
+
+          {/* Leveranciers met subcategorieën */}
+          <div className="space-y-3 max-h-96 overflow-y-auto">
+            {leveranciers.map(lev => {
+              const overzicht = leveranciersOverzicht[lev.naam] || { totaal: 0, subcategorieen: {} }
+              const subs = Object.entries(overzicht.subcategorieen).sort((a, b) => a[0].localeCompare(b[0]))
+
+              return (
+                <div key={lev.id} className="bg-white rounded-lg border p-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{lev.naam}</span>
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{overzicht.totaal} items</span>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => {
+                          const nieuweNaam = prompt('Nieuwe naam voor leverancier:', lev.naam)
+                          if (nieuweNaam && nieuweNaam !== lev.naam) {
+                            updateLeverancierNaam(lev.id, nieuweNaam)
+                          }
+                        }}
+                        className="text-blue-500 hover:text-blue-700 text-sm px-2"
+                      >✏️</button>
+                      <button onClick={() => deleteLeverancier(lev.id)} className="text-red-500 hover:text-red-700 text-sm px-2">🗑️</button>
+                    </div>
+                  </div>
+
+                  {subs.length > 0 && (
+                    <div className="mt-2 pl-4 border-l-2 border-gray-200 space-y-1">
+                      <div className="text-xs text-gray-500 mb-1">Subcategorieën:</div>
+                      {subs.map(([subNaam, count]) => (
+                        <div key={subNaam} className="flex justify-between items-center text-sm py-1 hover:bg-gray-50 rounded px-2 -mx-2">
+                          {editSubcategorie === `${lev.naam}-${subNaam}` ? (
+                            <input
+                              type="text"
+                              defaultValue={subNaam === 'Zonder subcategorie' ? '' : subNaam}
+                              autoFocus
+                              onBlur={(e) => {
+                                if (subNaam !== 'Zonder subcategorie') {
+                                  renameSubcategorie(subNaam, e.target.value, lev.naam)
+                                }
+                                setEditSubcategorie(null)
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  if (subNaam !== 'Zonder subcategorie') {
+                                    renameSubcategorie(subNaam, e.target.value, lev.naam)
+                                  }
+                                  setEditSubcategorie(null)
+                                }
+                                if (e.key === 'Escape') setEditSubcategorie(null)
+                              }}
+                              className="border rounded px-2 py-0.5 text-sm flex-1 mr-2"
+                            />
+                          ) : (
+                            <>
+                              <span className={subNaam === 'Zonder subcategorie' ? 'text-gray-400 italic' : ''}>
+                                {subNaam}
+                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-gray-400">{count}</span>
+                                {subNaam !== 'Zonder subcategorie' && (
+                                  <>
+                                    <button
+                                      onClick={() => setEditSubcategorie(`${lev.naam}-${subNaam}`)}
+                                      className="text-blue-500 hover:text-blue-700 text-xs"
+                                    >✏️</button>
+                                    <button
+                                      onClick={() => deleteSubcategorie(subNaam, lev.naam)}
+                                      className="text-red-500 hover:text-red-700 text-xs"
+                                    >🗑️</button>
+                                  </>
+                                )}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+            {leveranciers.length === 0 && <p className="text-gray-500 text-sm text-center py-4">Nog geen leveranciers</p>}
           </div>
         </div>
       )}
 
-      {/* Hoofdcategorieën */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {bibCategorieen.map(cat => (
-          <button
-            key={cat.id}
-            onClick={() => { setActiveCategorie(cat.id); setActiveLeverancier(null); setActiveSubcategorie(null) }}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeCategorie === cat.id ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'
-            }`}
-          >
-            {cat.label} ({bibliotheek.filter(i => i.categorie === cat.id).length})
-          </button>
-        ))}
-      </div>
+      {/* CATALOGUS WEERGAVE */}
+      {weergave === 'catalogus' ? (
+        <div className="grid grid-cols-12 gap-4">
+          {/* Linker paneel - Leveranciers & Subcategorieën */}
+          <div className="col-span-12 md:col-span-4 lg:col-span-3">
+            <div className="bg-white rounded-lg border sticky top-20">
+              <div className="p-3 border-b bg-gray-50">
+                <h3 className="font-medium text-sm">📖 Catalogus - Materialen</h3>
+              </div>
+              <div className="max-h-[70vh] overflow-y-auto">
+                {/* Alle items optie */}
+                <button
+                  onClick={() => { setActiveCategorie('materialen'); setActiveLeverancier(null); setActiveSubcategorie(null) }}
+                  className={`w-full text-left px-4 py-3 border-b hover:bg-gray-50 ${!activeLeverancier ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
+                >
+                  <div className="font-medium">Alle materialen</div>
+                  <div className="text-xs text-gray-500">{bibliotheek.filter(i => i.categorie === 'materialen').length} items</div>
+                </button>
 
-      {/* Leverancier subcategorieën (alleen bij Materialen) */}
-      {activeCategorie === 'materialen' && materialenLeveranciers.length > 0 && (
-        <div className="bg-gray-50 rounded-lg p-3 mb-4">
-          <div className="text-xs text-gray-500 mb-2">Leveranciers:</div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => { setActiveLeverancier(null); setActiveSubcategorie(null) }}
-              className={`px-3 py-1.5 rounded text-sm ${!activeLeverancier ? 'bg-blue-500 text-white' : 'bg-white border hover:bg-gray-100'}`}
-            >
-              Alle ({items.length})
-            </button>
-            {materialenLeveranciers.map(lev => (
+                {/* Leveranciers */}
+                {Object.entries(leveranciersOverzicht).sort((a, b) => a[0].localeCompare(b[0])).map(([levNaam, data]) => (
+                  <div key={levNaam} className="border-b">
+                    <button
+                      onClick={() => { setActiveLeverancier(levNaam); setActiveSubcategorie(null) }}
+                      className={`w-full text-left px-4 py-3 hover:bg-gray-50 flex justify-between items-center ${activeLeverancier === levNaam && !activeSubcategorie ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
+                    >
+                      <div>
+                        <div className="font-medium">{levNaam}</div>
+                        <div className="text-xs text-gray-500">{data.totaal} items</div>
+                      </div>
+                      <span className="text-gray-400">{activeLeverancier === levNaam ? '▼' : '▶'}</span>
+                    </button>
+
+                    {/* Subcategorieën (alleen tonen als leverancier actief is) */}
+                    {activeLeverancier === levNaam && (
+                      <div className="bg-gray-50">
+                        {Object.entries(data.subcategorieen).sort((a, b) => a[0].localeCompare(b[0])).map(([subNaam, count]) => (
+                          <button
+                            key={subNaam}
+                            onClick={() => setActiveSubcategorie(subNaam === activeSubcategorie ? null : subNaam)}
+                            className={`w-full text-left pl-8 pr-4 py-2 text-sm hover:bg-gray-100 flex justify-between ${activeSubcategorie === subNaam ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-600'}`}
+                          >
+                            <span className={subNaam === 'Zonder subcategorie' ? 'italic' : ''}>{subNaam}</span>
+                            <span className="text-xs text-gray-400">{count}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {Object.keys(leveranciersOverzicht).length === 0 && (
+                  <div className="p-4 text-center text-gray-400 text-sm">
+                    Nog geen leveranciers met materialen
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Rechter paneel - Items */}
+          <div className="col-span-12 md:col-span-8 lg:col-span-9">
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-2 text-sm text-gray-500 mb-3">
+              <span>Materialen</span>
+              {activeLeverancier && (
+                <>
+                  <span>›</span>
+                  <span className="text-gray-700">{activeLeverancier}</span>
+                </>
+              )}
+              {activeSubcategorie && (
+                <>
+                  <span>›</span>
+                  <span className="text-blue-600 font-medium">{activeSubcategorie}</span>
+                </>
+              )}
+              <span className="ml-auto text-gray-400">{gefilterdeItems.length} items</span>
+            </div>
+
+            {/* Zoeken */}
+            <div className="flex gap-2 mb-4">
+              <input
+                type="text"
+                value={zoek}
+                onChange={(e) => setZoek(e.target.value)}
+                placeholder="🔍 Zoeken in huidige selectie..."
+                className="flex-1 border rounded-lg px-3 py-2"
+              />
+              <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".xlsx,.xls" className="hidden" />
+              <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
+                📥 Import
+              </button>
+            </div>
+
+            {/* Items grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {gefilterdeItems.map(item => (
+                <div
+                  key={item.id}
+                  onClick={() => openEditModal(item)}
+                  className="bg-white rounded-lg border p-4 hover:shadow-md cursor-pointer transition-shadow"
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex-1">
+                      {item.artikelnummer && (
+                        <div className="text-xs text-gray-400 font-mono">{item.artikelnummer}</div>
+                      )}
+                      <div className="font-medium">{item.naam}</div>
+                      {item.omschrijving && (
+                        <div className="text-sm text-gray-500 line-clamp-2">{item.omschrijving}</div>
+                      )}
+                    </div>
+                    <div className="text-right ml-4">
+                      <div className="text-lg font-bold text-green-600">€{(item.prijs || 0).toFixed(2)}</div>
+                      <div className="text-xs text-gray-500">per {item.eenheid}</div>
+                    </div>
+                  </div>
+                  {(item.catalogusprijs > 0 || item.subcategorie) && (
+                    <div className="flex gap-2 mt-2 pt-2 border-t">
+                      {item.catalogusprijs > 0 && (
+                        <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                          Cat: €{item.catalogusprijs.toFixed(2)} {item.korting > 0 && `(-${item.korting}%)`}
+                        </span>
+                      )}
+                      {item.subcategorie && (
+                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{item.subcategorie}</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {gefilterdeItems.length === 0 && (
+              <div className="text-center py-12 text-gray-400">
+                <div className="text-4xl mb-2">📦</div>
+                <p>Geen items gevonden</p>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* LIJST WEERGAVE */}
+          {/* Hoofdcategorieën */}
+          <div className="flex flex-wrap gap-2 mb-4">
+            {bibCategorieen.map(cat => (
               <button
-                key={lev}
-                onClick={() => toggleLeverancier(lev)}
-                className={`px-3 py-1.5 rounded text-sm ${activeLeverancier === lev ? 'bg-blue-500 text-white' : 'bg-white border hover:bg-gray-100'}`}
+                key={cat.id}
+                onClick={() => { setActiveCategorie(cat.id); setActiveLeverancier(null); setActiveSubcategorie(null) }}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  activeCategorie === cat.id ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'
+                }`}
               >
-                {lev} ({items.filter(i => i.leverancier === lev).length})
+                {cat.label} ({bibliotheek.filter(i => i.categorie === cat.id).length})
               </button>
             ))}
           </div>
 
-          {/* Subcategorieën binnen leverancier */}
-          {activeLeverancier && subcategorieen.length > 0 && (
-            <div className="mt-3 pt-3 border-t">
-              <div className="text-xs text-gray-500 mb-2">Subcategorieën:</div>
+          {/* Leverancier subcategorieën (alleen bij Materialen) */}
+          {activeCategorie === 'materialen' && materialenLeveranciers.length > 0 && (
+            <div className="bg-gray-50 rounded-lg p-3 mb-4">
+              <div className="text-xs text-gray-500 mb-2">Leveranciers:</div>
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setActiveSubcategorie(null)}
-                  className={`px-2 py-1 rounded text-xs ${!activeSubcategorie ? 'bg-green-500 text-white' : 'bg-white border'}`}
+                  onClick={() => { setActiveLeverancier(null); setActiveSubcategorie(null) }}
+                  className={`px-3 py-1.5 rounded text-sm ${!activeLeverancier ? 'bg-blue-500 text-white' : 'bg-white border hover:bg-gray-100'}`}
                 >
-                  Alle
+                  Alle ({items.length})
                 </button>
-                {subcategorieen.map(sub => (
+                {materialenLeveranciers.map(lev => (
                   <button
-                    key={sub}
-                    onClick={() => setActiveSubcategorie(sub)}
-                    className={`px-2 py-1 rounded text-xs ${activeSubcategorie === sub ? 'bg-green-500 text-white' : 'bg-white border'}`}
+                    key={lev}
+                    onClick={() => toggleLeverancier(lev)}
+                    className={`px-3 py-1.5 rounded text-sm ${activeLeverancier === lev ? 'bg-blue-500 text-white' : 'bg-white border hover:bg-gray-100'}`}
                   >
-                    {sub}
+                    {lev} ({items.filter(i => i.leverancier === lev).length})
                   </button>
                 ))}
               </div>
+
+              {/* Subcategorieën binnen leverancier */}
+              {activeLeverancier && subcategorieen.length > 0 && (
+                <div className="mt-3 pt-3 border-t">
+                  <div className="text-xs text-gray-500 mb-2">Subcategorieën:</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => setActiveSubcategorie(null)}
+                      className={`px-2 py-1 rounded text-xs ${!activeSubcategorie ? 'bg-green-500 text-white' : 'bg-white border'}`}
+                    >
+                      Alle
+                    </button>
+                    {subcategorieen.map(sub => (
+                      <button
+                        key={sub}
+                        onClick={() => setActiveSubcategorie(sub)}
+                        className={`px-2 py-1 rounded text-xs ${activeSubcategorie === sub ? 'bg-green-500 text-white' : 'bg-white border'}`}
+                      >
+                        {sub}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
-        </div>
-      )}
 
-      {/* Zoeken en Import */}
-      <div className="flex gap-2 mb-4">
-        <input
-          type="text"
-          value={zoek}
-          onChange={(e) => setZoek(e.target.value)}
-          placeholder="🔍 Zoeken..."
-          className="flex-1 border rounded-lg px-3 py-2"
-        />
+          {/* Zoeken en Import */}
+          <div className="flex gap-2 mb-4">
+            <input
+              type="text"
+              value={zoek}
+              onChange={(e) => setZoek(e.target.value)}
+              placeholder="🔍 Zoeken..."
+              className="flex-1 border rounded-lg px-3 py-2"
+            />
         <input type="file" ref={fileInputRef} onChange={handleFileSelect} accept=".xlsx,.xls" className="hidden" />
         <button onClick={() => fileInputRef.current?.click()} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm">
           📥 Excel Import
@@ -627,6 +930,8 @@ const BibliotheekBeheer = ({ bibliotheek, leveranciers: propLeveranciers, onRefr
           </button>
         </div>
       </div>
+        </>
+      )}
 
       {/* Excel Import Modal */}
       {showImport && importData && (
