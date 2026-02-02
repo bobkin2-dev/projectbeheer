@@ -1512,7 +1512,7 @@ const OrderItemsBuilder = ({ orderItems, bibliotheek, sjablonen, onAddItem, onUp
 // =====================================================
 // PROJECT DETAIL
 // =====================================================
-const ProjectDetail = ({ project, bibliotheek, sjablonen, onBack, onRefresh, onUpdateProject }) => {
+const ProjectDetail = ({ project, bibliotheek, sjablonen, onBack, onRefresh, onUpdateProject, onDeleteProject }) => {
   const [orders, setOrders] = useState([])
   const [orderItems, setOrderItems] = useState({})
   const [activeTab, setActiveTab] = useState('offerte')
@@ -1709,6 +1709,12 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, onBack, onRefresh, onU
       <div className="bg-white rounded-lg border p-4 mb-4">
         <div className="flex justify-between items-start mb-4">
           <button onClick={onBack} className="text-blue-600 hover:text-blue-800">← Terug</button>
+          <button
+            onClick={() => onDeleteProject(project.id)}
+            className="text-red-500 hover:text-red-700 text-sm"
+          >
+            🗑️ Verwijder project
+          </button>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
@@ -2019,6 +2025,17 @@ export default function App() {
     setSelectedProject(updatedProject)
   }
 
+  const deleteProject = async (projectId) => {
+    if (!confirm('Weet je zeker dat je dit project wilt verwijderen? Alle orders worden ook verwijderd.')) return
+    try {
+      await supabase.from('projecten').delete().eq('id', projectId)
+      setProjecten(projecten.filter(p => p.id !== projectId))
+      setSelectedProject(null)
+    } catch (e) {
+      alert('Fout bij verwijderen: ' + e.message)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
@@ -2071,6 +2088,7 @@ export default function App() {
             onBack={() => { setSelectedProject(null); loadData() }}
             onRefresh={loadData}
             onUpdateProject={updateProject}
+            onDeleteProject={deleteProject}
           />
         ) : (
           <>
