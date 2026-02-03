@@ -2061,6 +2061,132 @@ const ProjectCard = ({ project, onClick }) => (
 )
 
 // =====================================================
+// KANBAN ORDER MODAL
+// =====================================================
+const KanbanOrderModal = ({ order, onClose, onUpdate }) => {
+  const [formData, setFormData] = useState({ ...order })
+  const [saving, setSaving] = useState(false)
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await supabase.from('orders').update({
+        naam: formData.naam,
+        offerte_status: formData.offerte_status,
+        werkvoorbereiding_status: formData.werkvoorbereiding_status,
+        productie_status: formData.productie_status,
+        plaatsing_status: formData.plaatsing_status,
+        plaatsing_datum: formData.plaatsing_datum
+      }).eq('id', order.id)
+      onUpdate({ ...order, ...formData })
+      onClose()
+    } catch (e) {
+      alert('Fout bij opslaan: ' + e.message)
+    }
+    setSaving(false)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-4 border-b flex justify-between items-center">
+          <h3 className="text-lg font-semibold">Order bewerken</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-xl">✕</button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Naam</label>
+            <input
+              type="text"
+              value={formData.naam || ''}
+              onChange={(e) => setFormData({ ...formData, naam: e.target.value })}
+              className="w-full border rounded px-3 py-2"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
+            <div className="px-3 py-2 bg-gray-100 rounded text-gray-600">{order.project?.naam || '-'}</div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Offerte status</label>
+              <select
+                value={formData.offerte_status || 'concept'}
+                onChange={(e) => setFormData({ ...formData, offerte_status: e.target.value })}
+                className="w-full border rounded px-3 py-2"
+              >
+                {Object.entries(offerteStatusConfig).map(([k, v]) => (
+                  <option key={k} value={k}>{v.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Werkvoorbereiding</label>
+              <select
+                value={formData.werkvoorbereiding_status || 'nietGestart'}
+                onChange={(e) => setFormData({ ...formData, werkvoorbereiding_status: e.target.value })}
+                className="w-full border rounded px-3 py-2"
+              >
+                {Object.entries(werkvoorbereidingConfig).map(([k, v]) => (
+                  <option key={k} value={k}>{v.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Productie</label>
+              <select
+                value={formData.productie_status || 'wacht'}
+                onChange={(e) => setFormData({ ...formData, productie_status: e.target.value })}
+                className="w-full border rounded px-3 py-2"
+              >
+                {Object.entries(productieConfig).map(([k, v]) => (
+                  <option key={k} value={k}>{v.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Plaatsing</label>
+              <select
+                value={formData.plaatsing_status || 'wacht'}
+                onChange={(e) => setFormData({ ...formData, plaatsing_status: e.target.value })}
+                className="w-full border rounded px-3 py-2"
+              >
+                {Object.entries(plaatsingConfig).map(([k, v]) => (
+                  <option key={k} value={k}>{v.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Plaatsing datum</label>
+            <input
+              type="date"
+              value={formData.plaatsing_datum || ''}
+              onChange={(e) => setFormData({ ...formData, plaatsing_datum: e.target.value })}
+              className="w-full border rounded px-3 py-2"
+            />
+          </div>
+        </div>
+
+        <div className="p-4 border-t flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 border rounded hover:bg-gray-50">Annuleren</button>
+          <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+            {saving ? 'Opslaan...' : 'Opslaan'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// =====================================================
 // KANBAN BOARD
 // =====================================================
 const KanbanBoard = ({ projecten }) => {
@@ -2068,6 +2194,7 @@ const KanbanBoard = ({ projecten }) => {
   const [loading, setLoading] = useState(true)
   const [draggedOrder, setDraggedOrder] = useState(null)
   const [dragOverColumn, setDragOverColumn] = useState(null)
+  const [selectedOrder, setSelectedOrder] = useState(null)
 
   useEffect(() => {
     const loadAllOrders = async () => {
@@ -2085,6 +2212,21 @@ const KanbanBoard = ({ projecten }) => {
     }
     loadAllOrders()
   }, [projecten])
+
+  // Calculate progress: how many steps completed out of 5
+  const getProgress = (order) => {
+    let completed = 0
+    if (order.offerte_status === 'goedgekeurd') completed++
+    if (order.werkvoorbereiding_status === 'klaar') completed++
+    if (order.productie_status === 'klaar') completed++
+    if (order.plaatsing_status === 'geplaatst') completed++
+    if (order.plaatsing_status === 'geplaatst') completed++ // afgerond = 5/5
+    return `${Math.min(completed, 5)}/5`
+  }
+
+  const handleOrderUpdate = (updatedOrder) => {
+    setAllOrders(allOrders.map(o => o.id === updatedOrder.id ? updatedOrder : o))
+  }
 
   // Status updates based on target column
   const getStatusUpdates = (targetColumn) => {
@@ -2183,37 +2325,51 @@ const KanbanBoard = ({ projecten }) => {
   ]
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
-      {kolommen.map(kolom => (
-        <div
-          key={kolom.id}
-          className={`${kolom.color} rounded-lg p-3 min-h-64 transition-all ${
-            dragOverColumn === kolom.id ? `ring-2 ring-offset-2 ${kolom.borderColor} ring-current` : ''
-          }`}
-          onDragOver={(e) => handleDragOver(e, kolom.id)}
-          onDragLeave={handleDragLeave}
-          onDrop={(e) => handleDrop(e, kolom.id)}
-        >
-          <div className="font-medium text-sm mb-3 pb-2 border-b">{kolom.titel} ({kolom.orders.length})</div>
-          <div className="space-y-2">
-            {kolom.orders.map(order => (
-              <div
-                key={order.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, order)}
-                onDragEnd={handleDragEnd}
-                className={`bg-white rounded border p-2 text-sm shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
-                  draggedOrder?.id === order.id ? 'opacity-50' : ''
-                }`}
-              >
-                <div className="font-medium">{order.naam}</div>
-                <div className="text-xs text-gray-500">{order.project?.naam}</div>
-              </div>
-            ))}
+    <>
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        {kolommen.map(kolom => (
+          <div
+            key={kolom.id}
+            className={`${kolom.color} rounded-lg p-3 min-h-64 transition-all ${
+              dragOverColumn === kolom.id ? `ring-2 ring-offset-2 ${kolom.borderColor} ring-current` : ''
+            }`}
+            onDragOver={(e) => handleDragOver(e, kolom.id)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, kolom.id)}
+          >
+            <div className="font-medium text-sm mb-3 pb-2 border-b">{kolom.titel} ({kolom.orders.length})</div>
+            <div className="space-y-2">
+              {kolom.orders.map(order => (
+                <div
+                  key={order.id}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, order)}
+                  onDragEnd={handleDragEnd}
+                  onClick={() => setSelectedOrder(order)}
+                  className={`bg-white rounded border p-2 text-sm shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
+                    draggedOrder?.id === order.id ? 'opacity-50' : ''
+                  }`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="font-medium">{order.naam}</div>
+                    <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{getProgress(order)}</span>
+                  </div>
+                  <div className="text-xs text-gray-500">{order.project?.naam}</div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+
+      {selectedOrder && (
+        <KanbanOrderModal
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
+          onUpdate={handleOrderUpdate}
+        />
+      )}
+    </>
   )
 }
 
