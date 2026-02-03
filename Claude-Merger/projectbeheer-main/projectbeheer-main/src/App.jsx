@@ -2213,15 +2213,35 @@ const KanbanBoard = ({ projecten }) => {
     loadAllOrders()
   }, [projecten])
 
-  // Calculate progress: how many steps completed out of 5
-  const getProgress = (order) => {
-    let completed = 0
-    if (order.offerte_status === 'goedgekeurd') completed++
-    if (order.werkvoorbereiding_status === 'klaar') completed++
-    if (order.productie_status === 'klaar') completed++
-    if (order.plaatsing_status === 'geplaatst') completed++
-    if (order.plaatsing_status === 'geplaatst') completed++ // afgerond = 5/5
-    return `${Math.min(completed, 5)}/5`
+  // Calculate progress within current phase
+  const getProgress = (order, column) => {
+    const offerteStatussen = ['nogOpstellen', 'concept', 'verzonden', 'goedgekeurd', 'afgekeurd']
+    const werkvoorbereidingStatussen = ['nietGestart', 'tekeningBezig', 'tekeningKlaar', 'materialenBesteld', 'materialenBinnen', 'klaar']
+    const productieStatussen = ['wacht', 'inProductie', 'klaar']
+    const plaatsingStatussen = ['wacht', 'ingepland', 'bezig', 'geplaatst']
+
+    switch (column) {
+      case 'offerte': {
+        const idx = offerteStatussen.indexOf(order.offerte_status || 'nogOpstellen')
+        return `${Math.max(idx + 1, 1)}/${offerteStatussen.length}`
+      }
+      case 'werkvoorbereiding': {
+        const idx = werkvoorbereidingStatussen.indexOf(order.werkvoorbereiding_status || 'nietGestart')
+        return `${Math.max(idx + 1, 1)}/${werkvoorbereidingStatussen.length}`
+      }
+      case 'productie': {
+        const idx = productieStatussen.indexOf(order.productie_status || 'wacht')
+        return `${Math.max(idx + 1, 1)}/${productieStatussen.length}`
+      }
+      case 'plaatsing': {
+        const idx = plaatsingStatussen.indexOf(order.plaatsing_status || 'wacht')
+        return `${Math.max(idx + 1, 1)}/${plaatsingStatussen.length}`
+      }
+      case 'afgerond':
+        return '✓'
+      default:
+        return ''
+    }
   }
 
   const handleOrderUpdate = (updatedOrder) => {
@@ -2352,7 +2372,7 @@ const KanbanBoard = ({ projecten }) => {
                 >
                   <div className="flex justify-between items-start">
                     <div className="font-medium">{order.naam}</div>
-                    <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{getProgress(order)}</span>
+                    <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{getProgress(order, kolom.id)}</span>
                   </div>
                   <div className="text-xs text-gray-500">{order.project?.naam}</div>
                 </div>
