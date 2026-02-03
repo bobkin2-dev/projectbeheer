@@ -2066,6 +2066,8 @@ const ProjectCard = ({ project, onClick }) => (
 const KanbanBoard = ({ projecten }) => {
   const [allOrders, setAllOrders] = useState([])
   const [loading, setLoading] = useState(true)
+  const [draggedOrder, setDraggedOrder] = useState(null)
+  const [dragOverColumn, setDragOverColumn] = useState(null)
 
   useEffect(() => {
     const loadAllOrders = async () => {
@@ -2084,24 +2086,126 @@ const KanbanBoard = ({ projecten }) => {
     loadAllOrders()
   }, [projecten])
 
+  // Status updates based on target column
+  const getStatusUpdates = (targetColumn) => {
+    switch (targetColumn) {
+      case 'offerte':
+        return {
+          offerte_status: 'concept',
+          werkvoorbereiding_status: 'nietGestart',
+          productie_status: 'wacht',
+          plaatsing_status: 'wacht'
+        }
+      case 'werkvoorbereiding':
+        return {
+          offerte_status: 'goedgekeurd',
+          werkvoorbereiding_status: 'nietGestart',
+          productie_status: 'wacht',
+          plaatsing_status: 'wacht'
+        }
+      case 'productie':
+        return {
+          offerte_status: 'goedgekeurd',
+          werkvoorbereiding_status: 'klaar',
+          productie_status: 'wacht',
+          plaatsing_status: 'wacht'
+        }
+      case 'plaatsing':
+        return {
+          offerte_status: 'goedgekeurd',
+          werkvoorbereiding_status: 'klaar',
+          productie_status: 'klaar',
+          plaatsing_status: 'wacht'
+        }
+      case 'afgerond':
+        return {
+          offerte_status: 'goedgekeurd',
+          werkvoorbereiding_status: 'klaar',
+          productie_status: 'klaar',
+          plaatsing_status: 'geplaatst'
+        }
+      default:
+        return {}
+    }
+  }
+
+  const handleDragStart = (e, order) => {
+    setDraggedOrder(order)
+    e.dataTransfer.effectAllowed = 'move'
+  }
+
+  const handleDragOver = (e, columnId) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    setDragOverColumn(columnId)
+  }
+
+  const handleDragLeave = () => {
+    setDragOverColumn(null)
+  }
+
+  const handleDrop = async (e, targetColumn) => {
+    e.preventDefault()
+    setDragOverColumn(null)
+
+    if (!draggedOrder) return
+
+    const updates = getStatusUpdates(targetColumn)
+
+    try {
+      await supabase.from('orders').update(updates).eq('id', draggedOrder.id)
+
+      // Update local state
+      setAllOrders(allOrders.map(o =>
+        o.id === draggedOrder.id ? { ...o, ...updates } : o
+      ))
+    } catch (err) {
+      console.error('Fout bij updaten:', err)
+      alert('Fout bij verplaatsen: ' + err.message)
+    }
+
+    setDraggedOrder(null)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedOrder(null)
+    setDragOverColumn(null)
+  }
+
   if (loading) return <LoadingSpinner />
 
   const kolommen = [
-    { id: 'offerte', titel: '📋 Offerte', color: 'bg-orange-50', orders: allOrders.filter(o => o.offerte_status !== 'goedgekeurd' && o.offerte_status !== 'afgekeurd') },
-    { id: 'werkvoorbereiding', titel: '🔧 Werkvoorb.', color: 'bg-blue-50', orders: allOrders.filter(o => o.offerte_status === 'goedgekeurd' && o.werkvoorbereiding_status !== 'klaar') },
-    { id: 'productie', titel: '🏭 Productie', color: 'bg-purple-50', orders: allOrders.filter(o => o.werkvoorbereiding_status === 'klaar' && o.productie_status !== 'klaar') },
-    { id: 'plaatsing', titel: '🚚 Plaatsing', color: 'bg-indigo-50', orders: allOrders.filter(o => o.productie_status === 'klaar' && o.plaatsing_status !== 'geplaatst') },
-    { id: 'afgerond', titel: '✅ Afgerond', color: 'bg-green-50', orders: allOrders.filter(o => o.plaatsing_status === 'geplaatst') }
+    { id: 'offerte', titel: '📋 Offerte', color: 'bg-orange-50', borderColor: 'border-orange-300', orders: allOrders.filter(o => o.offerte_status !== 'goedgekeurd' && o.offerte_status !== 'afgekeurd') },
+    { id: 'werkvoorbereiding', titel: '🔧 Werkvoorb.', color: 'bg-blue-50', borderColor: 'border-blue-300', orders: allOrders.filter(o => o.offerte_status === 'goedgekeurd' && o.werkvoorbereiding_status !== 'klaar') },
+    { id: 'productie', titel: '🏭 Productie', color: 'bg-purple-50', borderColor: 'border-purple-300', orders: allOrders.filter(o => o.werkvoorbereiding_status === 'klaar' && o.productie_status !== 'klaar') },
+    { id: 'plaatsing', titel: '🚚 Plaatsing', color: 'bg-indigo-50', borderColor: 'border-indigo-300', orders: allOrders.filter(o => o.productie_status === 'klaar' && o.plaatsing_status !== 'geplaatst') },
+    { id: 'afgerond', titel: '✅ Afgerond', color: 'bg-green-50', borderColor: 'border-green-300', orders: allOrders.filter(o => o.plaatsing_status === 'geplaatst') }
   ]
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
       {kolommen.map(kolom => (
-        <div key={kolom.id} className={`${kolom.color} rounded-lg p-3 min-h-64`}>
+        <div
+          key={kolom.id}
+          className={`${kolom.color} rounded-lg p-3 min-h-64 transition-all ${
+            dragOverColumn === kolom.id ? `ring-2 ring-offset-2 ${kolom.borderColor} ring-current` : ''
+          }`}
+          onDragOver={(e) => handleDragOver(e, kolom.id)}
+          onDragLeave={handleDragLeave}
+          onDrop={(e) => handleDrop(e, kolom.id)}
+        >
           <div className="font-medium text-sm mb-3 pb-2 border-b">{kolom.titel} ({kolom.orders.length})</div>
           <div className="space-y-2">
             {kolom.orders.map(order => (
-              <div key={order.id} className="bg-white rounded border p-2 text-sm shadow-sm">
+              <div
+                key={order.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, order)}
+                onDragEnd={handleDragEnd}
+                className={`bg-white rounded border p-2 text-sm shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
+                  draggedOrder?.id === order.id ? 'opacity-50' : ''
+                }`}
+              >
                 <div className="font-medium">{order.naam}</div>
                 <div className="text-xs text-gray-500">{order.project?.naam}</div>
               </div>
