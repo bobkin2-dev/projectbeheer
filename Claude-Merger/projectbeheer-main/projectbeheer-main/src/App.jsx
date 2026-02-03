@@ -1624,13 +1624,16 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, onBack, onRefresh, onU
   const saveProjectDetails = async () => {
     try {
       await supabase.from('projecten').update({
+        project_nummer: editingProject.project_nummer,
         naam: editingProject.naam,
         klant: editingProject.klant,
         architect: editingProject.architect,
         telefoon: editingProject.telefoon,
         email: editingProject.email,
         adres: editingProject.adres,
-        notities: editingProject.notities
+        notities: editingProject.notities,
+        kleur: editingProject.kleur,
+        emoji: editingProject.emoji
       }).eq('id', project.id)
       onUpdateProject(editingProject)
     } catch (e) {
@@ -1796,29 +1799,68 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, onBack, onRefresh, onU
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-xs text-gray-500 mb-1">Projectnaam</label>
-            <input 
-              type="text" 
-              value={editingProject.naam || ''} 
+            <input
+              type="text"
+              value={editingProject.naam || ''}
               onChange={(e) => setEditingProject({ ...editingProject, naam: e.target.value })}
               onBlur={saveProjectDetails}
-              className="w-full border rounded px-3 py-2 font-semibold" 
+              className="w-full border rounded px-3 py-2 font-semibold"
               placeholder="Projectnaam..."
             />
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Klant</label>
-            <input 
-              type="text" 
-              value={editingProject.klant || ''} 
+            <input
+              type="text"
+              value={editingProject.klant || ''}
               onChange={(e) => setEditingProject({ ...editingProject, klant: e.target.value })}
               onBlur={saveProjectDetails}
-              className="w-full border rounded px-3 py-2" 
+              className="w-full border rounded px-3 py-2"
               placeholder="Klantnaam..."
             />
           </div>
         </div>
-        
-        <div className="text-xs text-gray-500 mb-2">{project.project_nummer}</div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Projectnummer</label>
+            <input
+              type="text"
+              value={editingProject.project_nummer || ''}
+              onChange={(e) => setEditingProject({ ...editingProject, project_nummer: e.target.value })}
+              onBlur={saveProjectDetails}
+              className="w-full border rounded px-3 py-2 text-sm"
+              placeholder="PRJ-2024-001"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Kleur</label>
+            <div className="flex gap-1 flex-wrap">
+              {['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'].map(color => (
+                <button
+                  key={color}
+                  onClick={() => { setEditingProject({ ...editingProject, kleur: color }); setTimeout(saveProjectDetails, 100) }}
+                  className={`w-8 h-8 rounded-full border-2 ${editingProject.kleur === color ? 'border-gray-800 scale-110' : 'border-transparent'}`}
+                  style={{ backgroundColor: color }}
+                />
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Emoji</label>
+            <div className="flex gap-1 flex-wrap">
+              {['🏠', '🏢', '🏗️', '🔧', '⭐', '🎨', '📦', '🚀', '💼', '🛠️', '🏭', '🪑'].map(emoji => (
+                <button
+                  key={emoji}
+                  onClick={() => { setEditingProject({ ...editingProject, emoji: emoji }); setTimeout(saveProjectDetails, 100) }}
+                  className={`w-8 h-8 rounded border text-lg flex items-center justify-center ${editingProject.emoji === emoji ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
         <div className="mt-2 text-lg">💰 <strong className="text-green-600">€{totaalProject.toFixed(2)}</strong> • 📦 {orders.length} orders</div>
       </div>
 
@@ -2053,9 +2095,16 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, onBack, onRefresh, onU
 // PROJECT CARD
 // =====================================================
 const ProjectCard = ({ project, onClick }) => (
-  <div onClick={onClick} className="bg-white rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow">
-    <div className="text-xs text-gray-500">{project.project_nummer}</div>
-    <h3 className="font-semibold">{project.naam || 'Naamloos'}</h3>
+  <div
+    onClick={onClick}
+    className="rounded-lg border p-4 cursor-pointer hover:shadow-md transition-shadow"
+    style={{ backgroundColor: project.kleur ? `${project.kleur}15` : 'white', borderColor: project.kleur || '#e5e7eb' }}
+  >
+    <div className="flex justify-between items-start">
+      <div className="text-xs text-gray-500">{project.project_nummer}</div>
+      {project.emoji && <span className="text-xl">{project.emoji}</span>}
+    </div>
+    <h3 className="font-semibold" style={{ color: project.kleur || 'inherit' }}>{project.naam || 'Naamloos'}</h3>
     <div className="text-sm text-gray-600">👤 {project.klant || '-'}</div>
   </div>
 )
