@@ -2334,15 +2334,25 @@ export default function App() {
         <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-2">
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-bold">🪑 Projectbeheer</h1>
-            {!selectedProject && (
-              <nav className="flex flex-wrap gap-1">
-                {['projecten', 'kanban', 'bibliotheek', 'sjablonen'].map(v => (
-                  <button key={v} onClick={() => setView(v)} className={`px-3 py-1.5 rounded text-sm ${view === v ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}>
-                    {v === 'projecten' ? '📁' : v === 'kanban' ? '📋' : v === 'bibliotheek' ? '📚' : '📋'} <span className="hidden sm:inline">{v.charAt(0).toUpperCase() + v.slice(1)}</span>
-                  </button>
-                ))}
-              </nav>
-            )}
+            <nav className="flex flex-wrap gap-1">
+              {['projecten', 'kanban', 'bibliotheek', 'sjablonen'].map(v => (
+                <button
+                  key={v}
+                  onClick={() => {
+                    setView(v)
+                    if (v !== 'projecten') setSelectedProject(null)
+                  }}
+                  className={`px-3 py-1.5 rounded text-sm ${view === v && !selectedProject ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
+                >
+                  {v === 'projecten' ? '📁' : v === 'kanban' ? '📋' : v === 'bibliotheek' ? '📚' : '📋'} <span className="hidden sm:inline">{v.charAt(0).toUpperCase() + v.slice(1)}</span>
+                </button>
+              ))}
+              {selectedProject && (
+                <span className="flex items-center gap-1 px-3 py-1.5 rounded text-sm bg-green-100 text-green-700">
+                  🔧 <span className="hidden sm:inline">{selectedProject.naam || selectedProject.project_nummer}</span>
+                </span>
+              )}
+            </nav>
           </div>
           <div className="flex items-center gap-4">
             <ConnectionStatus isOnline={isOnline} lastSync={lastSync} />
