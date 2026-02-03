@@ -2076,7 +2076,8 @@ const KanbanOrderModal = ({ order, onClose, onUpdate }) => {
         werkvoorbereiding_status: formData.werkvoorbereiding_status,
         productie_status: formData.productie_status,
         plaatsing_status: formData.plaatsing_status,
-        plaatsing_datum: formData.plaatsing_datum
+        plaatsing_datum: formData.plaatsing_datum,
+        dringend: formData.dringend || false
       }).eq('id', order.id)
       onUpdate({ ...order, ...formData })
       onClose()
@@ -2172,6 +2173,17 @@ const KanbanOrderModal = ({ order, onClose, onUpdate }) => {
               onChange={(e) => setFormData({ ...formData, plaatsing_datum: e.target.value })}
               className="w-full border rounded px-3 py-2"
             />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="dringend"
+              checked={formData.dringend || false}
+              onChange={(e) => setFormData({ ...formData, dringend: e.target.checked })}
+              className="w-4 h-4 text-red-600 rounded"
+            />
+            <label htmlFor="dringend" className="text-sm font-medium text-red-600">🚨 Dringend</label>
           </div>
         </div>
 
@@ -2366,12 +2378,15 @@ const KanbanBoard = ({ projecten }) => {
                   onDragStart={(e) => handleDragStart(e, order)}
                   onDragEnd={handleDragEnd}
                   onClick={() => setSelectedOrder(order)}
-                  className={`bg-white rounded border p-2 text-sm shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
-                    draggedOrder?.id === order.id ? 'opacity-50' : ''
-                  }`}
+                  className={`rounded border p-2 text-sm shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
+                    order.dringend ? 'bg-red-50 border-red-300' : 'bg-white'
+                  } ${draggedOrder?.id === order.id ? 'opacity-50' : ''}`}
                 >
                   <div className="flex justify-between items-start">
-                    <div className="font-medium">{order.naam}</div>
+                    <div className="font-medium flex items-center gap-1">
+                      {order.dringend && <span className="text-red-500">🚨</span>}
+                      {order.naam}
+                    </div>
                     <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{getProgress(order, kolom.id)}</span>
                   </div>
                   <div className="text-xs text-gray-500">{order.project?.naam}</div>
