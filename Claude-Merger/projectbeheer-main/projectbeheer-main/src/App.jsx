@@ -15,37 +15,41 @@ const bibCategorieen = [
   { id: 'onderaanneming', label: '🤝 Onderaanneming', icon: '🤝' }
 ]
 
-const offerteStatusConfig = {
-  nogOpstellen: { label: '⚠️ Nog opstellen', kleur: 'bg-red-100 text-red-800 border-red-300' },
-  concept: { label: 'Concept', kleur: 'bg-gray-100 text-gray-800 border-gray-300' },
-  verzonden: { label: 'Verzonden', kleur: 'bg-yellow-100 text-yellow-800 border-yellow-300' },
-  goedgekeurd: { label: '✓ Goedgekeurd', kleur: 'bg-green-100 text-green-800 border-green-300' },
-  afgekeurd: { label: '✗ Afgekeurd', kleur: 'bg-red-100 text-red-800 border-red-300' }
+// Nieuw statussysteem — lineaire hoofdstatus + parallelle tracks
+const orderStatusConfig = {
+  prijsvraag:            { label: '📩 Prijsvraag',            kleur: 'bg-gray-100 text-gray-700 border-gray-300',   fase: 'offerte' },
+  geteld:               { label: '🧮 Geteld',                kleur: 'bg-blue-50 text-blue-700 border-blue-200',     fase: 'offerte' },
+  offerte_verstuurd:    { label: '📤 Offerte verstuurd',     kleur: 'bg-yellow-100 text-yellow-800 border-yellow-300', fase: 'offerte' },
+  goedgekeurd:          { label: '✅ Goedgekeurd',           kleur: 'bg-green-100 text-green-800 border-green-300', fase: 'voorbereiding' },
+  in_productie:         { label: '🏭 In productie',          kleur: 'bg-purple-100 text-purple-800 border-purple-300', fase: 'productie' },
+  kwaliteitscontrole:   { label: '🔍 Kwaliteitscontrole',   kleur: 'bg-indigo-100 text-indigo-800 border-indigo-300', fase: 'productie' },
+  klaar_voor_plaatsing: { label: '📦 Klaar voor plaatsing', kleur: 'bg-cyan-100 text-cyan-800 border-cyan-300',    fase: 'plaatsing' },
+  in_plaatsing:         { label: '🚚 In plaatsing',          kleur: 'bg-orange-100 text-orange-800 border-orange-300', fase: 'plaatsing' },
+  geplaatst:            { label: '🏠 Geplaatst',             kleur: 'bg-teal-100 text-teal-800 border-teal-300',    fase: 'afronding' },
+  opgeleverd:           { label: '🎉 Opgeleverd',            kleur: 'bg-emerald-100 text-emerald-800 border-emerald-300', fase: 'afronding' }
 }
 
-const werkvoorbereidingConfig = {
-  nietGestart: { label: 'Niet gestart', kleur: 'bg-gray-100 text-gray-600' },
-  tekeningBezig: { label: 'Tekening bezig', kleur: 'bg-blue-100 text-blue-800' },
-  tekeningKlaar: { label: 'Tekening klaar', kleur: 'bg-blue-200 text-blue-800' },
-  materialenBesteld: { label: 'Materialen besteld', kleur: 'bg-yellow-100 text-yellow-800' },
-  materialenBinnen: { label: 'Materialen binnen', kleur: 'bg-orange-100 text-orange-800' },
-  klaar: { label: '✓ Klaar', kleur: 'bg-green-100 text-green-800' }
-}
+const orderStatusVolgorde = ['prijsvraag', 'geteld', 'offerte_verstuurd', 'goedgekeurd', 'in_productie', 'kwaliteitscontrole', 'klaar_voor_plaatsing', 'in_plaatsing', 'geplaatst', 'opgeleverd']
 
-const productieConfig = {
-  wacht: { label: 'Wacht', kleur: 'bg-gray-100 text-gray-600' },
-  inProductie: { label: 'In productie', kleur: 'bg-purple-100 text-purple-800' },
-  klaar: { label: '✓ Klaar', kleur: 'bg-green-100 text-green-800' }
-}
+// Kanban kolommen (gegroepeerd)
+const kanbanKolommen = [
+  { id: 'offerte',       label: '📋 Offerte',       statussen: ['prijsvraag', 'geteld', 'offerte_verstuurd'] },
+  { id: 'voorbereiding', label: '🔧 Voorbereiding', statussen: ['goedgekeurd'] },
+  { id: 'productie',     label: '🏭 Productie',     statussen: ['in_productie', 'kwaliteitscontrole'] },
+  { id: 'plaatsing',     label: '🚚 Plaatsing',     statussen: ['klaar_voor_plaatsing', 'in_plaatsing'] },
+  { id: 'afgerond',      label: '✅ Afgerond',       statussen: ['geplaatst', 'opgeleverd'] }
+]
 
-const typeWerkOpties = ['onderdelen', 'monteren', 'inpakken', 'overig']
+// Helper: kan een order naar productie?
+const kanNaarProductie = (order) => order.tekening_goedgekeurd && order.materiaal_binnen
 
-const plaatsingConfig = {
-  wacht: { label: 'Wacht', kleur: 'bg-gray-100 text-gray-600' },
-  ingepland: { label: 'Ingepland', kleur: 'bg-blue-100 text-blue-800' },
-  bezig: { label: 'Bezig', kleur: 'bg-purple-100 text-purple-800' },
-  geplaatst: { label: '✓ Geplaatst', kleur: 'bg-green-100 text-green-800' }
-}
+// Legacy compat
+const offerteStatusConfig = orderStatusConfig
+const werkvoorbereidingConfig = { nietGestart: { label: 'Niet gestart', kleur: 'bg-gray-100 text-gray-600' }, klaar: { label: '✓ Klaar', kleur: 'bg-green-100 text-green-800' } }
+const productieConfig = { wacht: { label: 'Wacht', kleur: 'bg-gray-100 text-gray-600' }, inProductie: { label: 'In productie', kleur: 'bg-purple-100 text-purple-800' }, klaar: { label: '✓ Klaar', kleur: 'bg-green-100 text-green-800' } }
+const plaatsingConfig = { wacht: { label: 'Wacht', kleur: 'bg-gray-100 text-gray-600' }, geplaatst: { label: '✓ Geplaatst', kleur: 'bg-green-100 text-green-800' } }
+
+const typeWerkOpties = ['onderdelen', 'monteren', 'inpakken', 'lakwerk', 'metaalwerk', 'overig']
 
 // =====================================================
 // HELPER FUNCTIONS
@@ -1588,11 +1592,12 @@ const OrderItemsBuilder = ({ orderItems, bibliotheek, sjablonen, onAddItem, onUp
 const ProjectDetail = ({ project, bibliotheek, sjablonen, medewerkers = [], onBack, onRefresh, onUpdateProject, onDeleteProject }) => {
   const [orders, setOrders] = useState([])
   const [orderItems, setOrderItems] = useState({})
-  const [activeTab, setActiveTab] = useState('offerte')
+  const [activeTab, setActiveTab] = useState('orders')
   const [expandedOrder, setExpandedOrder] = useState(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [nieuwOrderNaam, setNieuwOrderNaam] = useState('')
+  const [nieuwOrderMeerwerk, setNieuwOrderMeerwerk] = useState(false)
   const [editingProject, setEditingProject] = useState({ ...project })
   const [editingOrderId, setEditingOrderId] = useState(null)
   const [editingOrderNaam, setEditingOrderNaam] = useState('')
@@ -1648,13 +1653,16 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, medewerkers = [], onBa
       const { data: created, error } = await supabase.from('orders').insert({
         project_id: project.id,
         naam: nieuwOrderNaam.trim(),
+        status: 'prijsvraag',
+        is_meerwerk: nieuwOrderMeerwerk,
         added_from: 'offerte'
       }).select().single()
-      
+
       if (error) throw error
       setOrders([...orders, created])
       setOrderItems({ ...orderItems, [created.id]: [] })
       setNieuwOrderNaam('')
+      setNieuwOrderMeerwerk(false)
     } catch (e) {
       alert('Fout: ' + e.message)
     }
@@ -1777,11 +1785,16 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, medewerkers = [], onBa
   if (loading) return <LoadingSpinner />
 
   const tabs = [
-    { id: 'offerte', label: '📋 Offerte' },
-    { id: 'werkvoorbereiding', label: '🔧 Werkvoorb.' },
+    { id: 'orders', label: '📋 Orders' },
+    { id: 'voorbereiding', label: '🔧 Voorbereiding' },
     { id: 'productie', label: '🏭 Productie' },
     { id: 'plaatsing', label: '🚚 Plaatsing' }
   ]
+
+  // Helper: orders per fase
+  const ordersGoedgekeurd = orders.filter(o => ['goedgekeurd'].includes(o.status))
+  const ordersInProductie = orders.filter(o => ['in_productie', 'kwaliteitscontrole'].includes(o.status))
+  const ordersVoorPlaatsing = orders.filter(o => ['klaar_voor_plaatsing', 'in_plaatsing', 'geplaatst'].includes(o.status))
 
   return (
     <div>
@@ -1864,16 +1877,16 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, medewerkers = [], onBa
         <div className="mt-2 text-lg">💰 <strong className="text-green-600">€{totaalProject.toFixed(2)}</strong> • 📦 {orders.length} orders</div>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-4">
+      <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-xl">
         {tabs.map(tab => (
-          <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === tab.id ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'}`}>
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}>
             {tab.label}
           </button>
         ))}
       </div>
 
-      <div className="bg-gray-50 rounded-lg p-4">
-        {activeTab === 'offerte' && (
+      <div className="bg-gray-50 rounded-xl p-4">
+        {activeTab === 'orders' && (
           <div className="space-y-4">
             {orders.map(order => {
               const items = orderItems[order.id] || []
@@ -1927,18 +1940,31 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, medewerkers = [], onBa
                     </div>
                     <div className="flex items-center gap-4">
                       <span className="font-semibold text-green-600">€{totaal.toFixed(2)}</span>
-                      <StatusBadge config={offerteStatusConfig} status={order.offerte_status} />
+                      {order.is_meerwerk && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-xs font-medium border border-amber-200">Meerwerk</span>}
+                      <span className={`px-2 py-1 rounded text-xs font-medium border ${(orderStatusConfig[order.status] || orderStatusConfig.prijsvraag).kleur}`}>
+                        {(orderStatusConfig[order.status] || orderStatusConfig.prijsvraag).label}
+                      </span>
                       <button onClick={(e) => { e.stopPropagation(); deleteOrder(order.id) }} className="text-red-500 hover:text-red-700">✕</button>
                     </div>
                   </div>
 
                   {isExpanded && (
                     <div className="border-t p-4 bg-gray-50">
-                      <div className="mb-4">
-                        <label className="block text-sm font-medium mb-1">Status</label>
-                        <select value={order.offerte_status} onChange={(e) => updateOrder(order.id, { offerte_status: e.target.value })} className="border rounded px-3 py-2">
-                          {Object.entries(offerteStatusConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                        </select>
+                      <div className="mb-4 flex flex-wrap gap-4 items-end">
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Status</label>
+                          <select value={order.status || 'prijsvraag'} onChange={(e) => updateOrder(order.id, { status: e.target.value })} className="border rounded-lg px-3 py-2 text-sm">
+                            {Object.entries(orderStatusConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium mb-1">Begrote uren</label>
+                          <input type="number" step="0.5" min="0" value={order.begrote_uren || ''} onChange={(e) => updateOrder(order.id, { begrote_uren: parseFloat(e.target.value) || 0 })} className="border rounded-lg px-3 py-2 text-sm w-24" placeholder="0" />
+                        </div>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                          <input type="checkbox" checked={order.is_meerwerk || false} onChange={(e) => updateOrder(order.id, { is_meerwerk: e.target.checked })} className="w-4 h-4 rounded text-amber-600" />
+                          <span className="text-amber-700 font-medium">Meerwerk</span>
+                        </label>
                       </div>
 
                       <OrderItemsBuilder
@@ -1959,133 +1985,152 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, medewerkers = [], onBa
               )
             })}
 
-            <div className="flex gap-2">
-              <input type="text" value={nieuwOrderNaam} onChange={(e) => setNieuwOrderNaam(e.target.value)} placeholder="Nieuwe order naam..." className="flex-1 border rounded px-3 py-2" onKeyDown={(e) => e.key === 'Enter' && addOrder()} />
-              <button onClick={addOrder} disabled={saving || !nieuwOrderNaam.trim()} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+            <div className="flex gap-2 items-center">
+              <input type="text" value={nieuwOrderNaam} onChange={(e) => setNieuwOrderNaam(e.target.value)} placeholder="Nieuwe order naam..." className="flex-1 border rounded-lg px-3 py-2" onKeyDown={(e) => e.key === 'Enter' && addOrder()} />
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer whitespace-nowrap">
+                <input type="checkbox" checked={nieuwOrderMeerwerk} onChange={(e) => setNieuwOrderMeerwerk(e.target.checked)} className="w-3.5 h-3.5 rounded text-amber-600" />
+                <span className="text-amber-700">Meerwerk</span>
+              </label>
+              <button onClick={addOrder} disabled={saving || !nieuwOrderNaam.trim()} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
                 + Order
               </button>
             </div>
           </div>
         )}
 
-        {activeTab === 'werkvoorbereiding' && (
-          <div className="space-y-4">
-            {orders.filter(o => o.offerte_status === 'goedgekeurd').map(order => (
-              <div key={order.id} className="bg-white rounded-lg border p-4">
+        {activeTab === 'voorbereiding' && (
+          <div className="space-y-3">
+            {ordersGoedgekeurd.length > 0 && (
+              <div className="bg-blue-50 rounded-xl p-3 mb-2 text-sm text-blue-700">
+                ℹ️ Vink tekening en materiaal af. Als <strong>beide klaar</strong> zijn, kan de order naar productie.
+              </div>
+            )}
+            {ordersGoedgekeurd.map(order => (
+              <div key={order.id} className={`bg-white rounded-xl border-2 p-4 transition-all ${kanNaarProductie(order) ? 'border-green-300 bg-green-50' : 'border-gray-200'}`}>
                 <div className="flex justify-between items-center mb-3">
-                  {editingOrderId === order.id ? (
-                    <input
-                      type="text"
-                      value={editingOrderNaam}
-                      onChange={(e) => setEditingOrderNaam(e.target.value)}
-                      onBlur={() => {
-                        if (editingOrderNaam.trim()) updateOrder(order.id, { naam: editingOrderNaam.trim() })
-                        setEditingOrderId(null)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          if (editingOrderNaam.trim()) updateOrder(order.id, { naam: editingOrderNaam.trim() })
-                          setEditingOrderId(null)
-                        }
-                        if (e.key === 'Escape') setEditingOrderId(null)
-                      }}
-                      autoFocus
-                      className="font-medium border rounded px-2 py-1"
-                    />
-                  ) : (
-                    <h4
-                      className="font-medium hover:text-blue-600 cursor-text"
-                      onClick={() => { setEditingOrderId(order.id); setEditingOrderNaam(order.naam) }}
-                    >
-                      {order.naam}
-                    </h4>
+                  <div>
+                    <h4 className="font-semibold text-gray-800">{order.naam}</h4>
+                    {order.is_meerwerk && <span className="text-xs text-amber-600 font-medium">Meerwerk</span>}
+                  </div>
+                  {kanNaarProductie(order) && (
+                    <button onClick={() => updateOrder(order.id, { status: 'in_productie' })} className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 transition-colors shadow-sm">
+                      ▶ Start productie
+                    </button>
                   )}
-                  <StatusBadge config={werkvoorbereidingConfig} status={order.werkvoorbereiding_status} />
                 </div>
-                <select value={order.werkvoorbereiding_status} onChange={(e) => updateOrder(order.id, { werkvoorbereiding_status: e.target.value })} className="border rounded px-3 py-2">
-                  {Object.entries(werkvoorbereidingConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                </select>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {/* Tekening track */}
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs font-medium text-gray-500 mb-2">📐 Tekening</div>
+                    <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                      <input type="checkbox" checked={order.tekening_klaar || false} onChange={(e) => updateOrder(order.id, { tekening_klaar: e.target.checked })} className="w-5 h-5 rounded text-blue-600" />
+                      <span className={`text-sm ${order.tekening_klaar ? 'text-green-700 font-medium' : 'text-gray-600'}`}>Tekening klaar</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={order.tekening_goedgekeurd || false} onChange={(e) => updateOrder(order.id, { tekening_goedgekeurd: e.target.checked })} className="w-5 h-5 rounded text-blue-600" disabled={!order.tekening_klaar} />
+                      <span className={`text-sm ${order.tekening_goedgekeurd ? 'text-green-700 font-medium' : 'text-gray-600'}`}>Goedgekeurd door klant</span>
+                    </label>
+                  </div>
+
+                  {/* Materiaal track */}
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <div className="text-xs font-medium text-gray-500 mb-2">📦 Materiaal</div>
+                    <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                      <input type="checkbox" checked={order.materiaal_besteld || false} onChange={(e) => updateOrder(order.id, { materiaal_besteld: e.target.checked })} className="w-5 h-5 rounded text-amber-600" />
+                      <span className={`text-sm ${order.materiaal_besteld ? 'text-green-700 font-medium' : 'text-gray-600'}`}>Materiaal besteld</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={order.materiaal_binnen || false} onChange={(e) => updateOrder(order.id, { materiaal_binnen: e.target.checked })} className="w-5 h-5 rounded text-amber-600" disabled={!order.materiaal_besteld} />
+                      <span className={`text-sm ${order.materiaal_binnen ? 'text-green-700 font-medium' : 'text-gray-600'}`}>Materiaal binnen</span>
+                    </label>
+                  </div>
+                </div>
               </div>
             ))}
-            {orders.filter(o => o.offerte_status === 'goedgekeurd').length === 0 && (
-              <div className="text-center py-8 text-gray-400">Geen orders met goedgekeurde offerte.</div>
+            {ordersGoedgekeurd.length === 0 && (
+              <div className="text-center py-12 text-gray-400">
+                <div className="text-3xl mb-2">🔧</div>
+                Geen goedgekeurde orders om voor te bereiden
+              </div>
             )}
           </div>
         )}
 
         {activeTab === 'productie' && (
-          <div className="space-y-4">
-            {orders.filter(o => o.offerte_status === 'goedgekeurd').map(order => (
-              <div key={order.id} className="bg-white rounded-lg border p-4">
+          <div className="space-y-3">
+            {ordersInProductie.map(order => (
+              <div key={order.id} className="bg-white rounded-xl border p-4">
                 <div className="flex justify-between items-center mb-3">
-                  {editingOrderId === order.id ? (
-                    <input
-                      type="text"
-                      value={editingOrderNaam}
-                      onChange={(e) => setEditingOrderNaam(e.target.value)}
-                      onBlur={() => {
-                        if (editingOrderNaam.trim()) updateOrder(order.id, { naam: editingOrderNaam.trim() })
-                        setEditingOrderId(null)
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          if (editingOrderNaam.trim()) updateOrder(order.id, { naam: editingOrderNaam.trim() })
-                          setEditingOrderId(null)
-                        }
-                        if (e.key === 'Escape') setEditingOrderId(null)
-                      }}
-                      autoFocus
-                      className="font-medium border rounded px-2 py-1"
-                    />
-                  ) : (
-                    <h4
-                      className="font-medium hover:text-blue-600 cursor-text"
-                      onClick={() => { setEditingOrderId(order.id); setEditingOrderNaam(order.naam) }}
-                    >
-                      {order.naam}
-                    </h4>
-                  )}
-                  <StatusBadge config={productieConfig} status={order.productie_status} />
+                  <div>
+                    <h4 className="font-semibold text-gray-800">{order.naam}</h4>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${(orderStatusConfig[order.status] || {}).kleur || ''}`}>
+                      {(orderStatusConfig[order.status] || {}).label}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    {order.status === 'in_productie' && (
+                      <button onClick={() => updateOrder(order.id, { status: 'kwaliteitscontrole' })} className="px-3 py-1.5 bg-indigo-600 text-white rounded-lg text-sm hover:bg-indigo-700">
+                        🔍 Naar controle
+                      </button>
+                    )}
+                    {order.status === 'kwaliteitscontrole' && (
+                      <button onClick={() => updateOrder(order.id, { status: 'klaar_voor_plaatsing' })} className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700">
+                        ✅ Goedgekeurd — klaar
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <select value={order.productie_status} onChange={(e) => updateOrder(order.id, { productie_status: e.target.value })} className="border rounded px-3 py-2 mb-2">
-                  {Object.entries(productieConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                </select>
-                <ProductieUrenInput
-                  urenLijst={order.productie_uren_lijst || []}
-                  onChange={(u) => updateOrder(order.id, { productie_uren_lijst: u })}
-                  isExpanded={expandedProductieUren[order.id] || false}
-                  onToggle={() => setExpandedProductieUren({ ...expandedProductieUren, [order.id]: !expandedProductieUren[order.id] })}
-                  medewerkers={medewerkers.map(m => m.naam || m)}
-                />
                 <SnelUrenInvoer orderId={order.id} projectId={project.id} medewerkers={medewerkers} />
                 <OrderProducten orderId={order.id} />
               </div>
             ))}
-            {orders.filter(o => o.offerte_status === 'goedgekeurd').length === 0 && (
-              <div className="text-center py-8 text-gray-400">Geen orders met goedgekeurde offerte.</div>
+            {ordersInProductie.length === 0 && (
+              <div className="text-center py-12 text-gray-400">
+                <div className="text-3xl mb-2">🏭</div>
+                Geen orders in productie
+              </div>
             )}
           </div>
         )}
 
         {activeTab === 'plaatsing' && (
-          <div className="space-y-4">
-            {orders.filter(o => o.productie_status === 'klaar').map(order => (
-              <div key={order.id} className="bg-white rounded-lg border p-4">
+          <div className="space-y-3">
+            {ordersVoorPlaatsing.map(order => (
+              <div key={order.id} className="bg-white rounded-xl border p-4">
                 <div className="flex justify-between items-center mb-3">
-                  <h4 className="font-medium">{order.naam}</h4>
-                  <StatusBadge config={plaatsingConfig} status={order.plaatsing_status} />
+                  <div>
+                    <h4 className="font-semibold text-gray-800">{order.naam}</h4>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${(orderStatusConfig[order.status] || {}).kleur || ''}`}>
+                      {(orderStatusConfig[order.status] || {}).label}
+                    </span>
+                  </div>
+                  <div className="flex gap-2 items-center">
+                    <input type="date" value={order.plaatsing_datum || ''} onChange={(e) => updateOrder(order.id, { plaatsing_datum: e.target.value })} className="border rounded-lg px-3 py-1.5 text-sm" />
+                    {order.status === 'klaar_voor_plaatsing' && (
+                      <button onClick={() => updateOrder(order.id, { status: 'in_plaatsing' })} className="px-3 py-1.5 bg-orange-600 text-white rounded-lg text-sm hover:bg-orange-700">
+                        🚚 Start plaatsing
+                      </button>
+                    )}
+                    {order.status === 'in_plaatsing' && (
+                      <button onClick={() => updateOrder(order.id, { status: 'geplaatst' })} className="px-3 py-1.5 bg-teal-600 text-white rounded-lg text-sm hover:bg-teal-700">
+                        🏠 Geplaatst
+                      </button>
+                    )}
+                    {order.status === 'geplaatst' && (
+                      <button onClick={() => updateOrder(order.id, { status: 'opgeleverd' })} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-sm hover:bg-emerald-700">
+                        🎉 Opgeleverd
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-4 mb-2">
-                  <select value={order.plaatsing_status} onChange={(e) => updateOrder(order.id, { plaatsing_status: e.target.value })} className="border rounded px-3 py-2">
-                    {Object.entries(plaatsingConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-                  </select>
-                  <input type="date" value={order.plaatsing_datum || ''} onChange={(e) => updateOrder(order.id, { plaatsing_datum: e.target.value })} className="border rounded px-3 py-2" />
-                </div>
-                <UrenInput uren={order.plaatsing_uren || {}} onChange={(u) => updateOrder(order.id, { plaatsing_uren: u })} medewerkers={medewerkers.map(m => m.naam || m)} />
               </div>
             ))}
-            {orders.filter(o => o.productie_status === 'klaar').length === 0 && (
-              <div className="text-center py-8 text-gray-400">Geen orders klaar voor plaatsing.</div>
+            {ordersVoorPlaatsing.length === 0 && (
+              <div className="text-center py-12 text-gray-400">
+                <div className="text-3xl mb-2">🚚</div>
+                Geen orders klaar voor of in plaatsing
+              </div>
             )}
           </div>
         )}
@@ -3235,14 +3280,18 @@ const KanbanOrderModal = ({ order, onClose, onUpdate }) => {
     try {
       await supabase.from('orders').update({
         naam: formData.naam,
-        offerte_status: formData.offerte_status,
-        werkvoorbereiding_status: formData.werkvoorbereiding_status,
-        productie_status: formData.productie_status,
-        plaatsing_status: formData.plaatsing_status,
-        plaatsing_datum: formData.plaatsing_datum,
+        status: formData.status || 'prijsvraag',
         dringend: formData.dringend || false,
+        is_meerwerk: formData.is_meerwerk || false,
+        tekening_klaar: formData.tekening_klaar || false,
+        tekening_goedgekeurd: formData.tekening_goedgekeurd || false,
+        materiaal_besteld: formData.materiaal_besteld || false,
+        materiaal_binnen: formData.materiaal_binnen || false,
+        begrote_uren: formData.begrote_uren || 0,
+        plaatsing_datum: formData.plaatsing_datum,
         uren_compleet: formData.uren_compleet || false,
-        nacalculatie_klaar: formData.nacalculatie_klaar || false
+        nacalculatie_klaar: formData.nacalculatie_klaar || false,
+        notitie: formData.notitie || null
       }).eq('id', order.id)
       onUpdate({ ...order, ...formData })
       onClose()
@@ -3254,133 +3303,104 @@ const KanbanOrderModal = ({ order, onClose, onUpdate }) => {
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="p-4 border-b flex justify-between items-center">
-          <h3 className="text-lg font-semibold">Order bewerken</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 text-xl">✕</button>
+      <div className="bg-white rounded-xl shadow-xl max-w-lg w-full max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b flex justify-between items-center">
+          <h3 className="text-lg font-bold text-gray-800">Order bewerken</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl">✕</button>
         </div>
 
-        <div className="p-4 space-y-4">
+        <div className="p-5 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Naam</label>
-            <input
-              type="text"
-              value={formData.naam || ''}
-              onChange={(e) => setFormData({ ...formData, naam: e.target.value })}
-              className="w-full border rounded px-3 py-2"
-            />
+            <label className="block text-xs font-medium text-gray-500 mb-1">Naam</label>
+            <input type="text" value={formData.naam || ''} onChange={(e) => setFormData({ ...formData, naam: e.target.value })} className="w-full border rounded-lg px-3 py-2" />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Project</label>
-            <div className="px-3 py-2 bg-gray-100 rounded text-gray-600">{order.project?.naam || '-'}</div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Project</label>
+            <div className="px-3 py-2 bg-gray-50 rounded-lg text-gray-600 text-sm">{order.project?.emoji} {order.project?.naam || '-'}</div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Offerte status</label>
-              <select
-                value={formData.offerte_status || 'concept'}
-                onChange={(e) => setFormData({ ...formData, offerte_status: e.target.value })}
-                className="w-full border rounded px-3 py-2"
-              >
-                {Object.entries(offerteStatusConfig).map(([k, v]) => (
-                  <option key={k} value={k}>{v.label}</option>
-                ))}
+              <label className="block text-xs font-medium text-gray-500 mb-1">Status</label>
+              <select value={formData.status || 'prijsvraag'} onChange={(e) => setFormData({ ...formData, status: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm">
+                {Object.entries(orderStatusConfig).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>
-
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Werkvoorbereiding</label>
-              <select
-                value={formData.werkvoorbereiding_status || 'nietGestart'}
-                onChange={(e) => setFormData({ ...formData, werkvoorbereiding_status: e.target.value })}
-                className="w-full border rounded px-3 py-2"
-              >
-                {Object.entries(werkvoorbereidingConfig).map(([k, v]) => (
-                  <option key={k} value={k}>{v.label}</option>
-                ))}
-              </select>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Begrote uren</label>
+              <input type="number" step="0.5" min="0" value={formData.begrote_uren || ''} onChange={(e) => setFormData({ ...formData, begrote_uren: parseFloat(e.target.value) || 0 })} className="w-full border rounded-lg px-3 py-2 text-sm" />
             </div>
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Productie</label>
-              <select
-                value={formData.productie_status || 'wacht'}
-                onChange={(e) => setFormData({ ...formData, productie_status: e.target.value })}
-                className="w-full border rounded px-3 py-2"
-              >
-                {Object.entries(productieConfig).map(([k, v]) => (
-                  <option key={k} value={k}>{v.label}</option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Plaatsing</label>
-              <select
-                value={formData.plaatsing_status || 'wacht'}
-                onChange={(e) => setFormData({ ...formData, plaatsing_status: e.target.value })}
-                className="w-full border rounded px-3 py-2"
-              >
-                {Object.entries(plaatsingConfig).map(([k, v]) => (
-                  <option key={k} value={k}>{v.label}</option>
-                ))}
-              </select>
+          {/* Voorbereiding tracks */}
+          <div className="bg-gray-50 rounded-xl p-4">
+            <div className="text-xs font-medium text-gray-500 mb-3">Voorbereiding</div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <div className="text-xs text-gray-500">📐 Tekening</div>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input type="checkbox" checked={formData.tekening_klaar || false} onChange={(e) => setFormData({ ...formData, tekening_klaar: e.target.checked })} className="w-4 h-4 rounded" />
+                  Tekening klaar
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input type="checkbox" checked={formData.tekening_goedgekeurd || false} onChange={(e) => setFormData({ ...formData, tekening_goedgekeurd: e.target.checked })} className="w-4 h-4 rounded" />
+                  Goedgekeurd
+                </label>
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs text-gray-500">📦 Materiaal</div>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input type="checkbox" checked={formData.materiaal_besteld || false} onChange={(e) => setFormData({ ...formData, materiaal_besteld: e.target.checked })} className="w-4 h-4 rounded" />
+                  Besteld
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input type="checkbox" checked={formData.materiaal_binnen || false} onChange={(e) => setFormData({ ...formData, materiaal_binnen: e.target.checked })} className="w-4 h-4 rounded" />
+                  Binnen
+                </label>
+              </div>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Plaatsing datum</label>
-            <input
-              type="date"
-              value={formData.plaatsing_datum || ''}
-              onChange={(e) => setFormData({ ...formData, plaatsing_datum: e.target.value })}
-              className="w-full border rounded px-3 py-2"
-            />
+            <label className="block text-xs font-medium text-gray-500 mb-1">Plaatsing datum</label>
+            <input type="date" value={formData.plaatsing_datum || ''} onChange={(e) => setFormData({ ...formData, plaatsing_datum: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
           </div>
 
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="dringend"
-              checked={formData.dringend || false}
-              onChange={(e) => setFormData({ ...formData, dringend: e.target.checked })}
-              className="w-4 h-4 text-red-600 rounded"
-            />
-            <label htmlFor="dringend" className="text-sm font-medium text-red-600">🚨 Dringend</label>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Notitie</label>
+            <textarea value={formData.notitie || ''} onChange={(e) => setFormData({ ...formData, notitie: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" rows={2} placeholder="Opmerkingen..." />
           </div>
 
-          <div className="border-t pt-3 mt-3">
-            <div className="text-sm font-medium text-gray-700 mb-2">Nacalculatie</div>
+          <div className="flex flex-wrap gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={formData.dringend || false} onChange={(e) => setFormData({ ...formData, dringend: e.target.checked })} className="w-4 h-4 text-red-600 rounded" />
+              <span className="text-sm text-red-600 font-medium">🚨 Dringend</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={formData.is_meerwerk || false} onChange={(e) => setFormData({ ...formData, is_meerwerk: e.target.checked })} className="w-4 h-4 text-amber-600 rounded" />
+              <span className="text-sm text-amber-700 font-medium">+ Meerwerk</span>
+            </label>
+          </div>
+
+          <div className="border-t pt-3">
+            <div className="text-xs font-medium text-gray-500 mb-2">Nacalculatie</div>
             <div className="flex gap-4">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="uren_compleet"
-                  checked={formData.uren_compleet || false}
-                  onChange={(e) => setFormData({ ...formData, uren_compleet: e.target.checked })}
-                  className="w-4 h-4 text-orange-600 rounded"
-                />
-                <label htmlFor="uren_compleet" className="text-sm text-gray-700">Uren compleet</label>
-              </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="nacalculatie_klaar"
-                  checked={formData.nacalculatie_klaar || false}
-                  onChange={(e) => setFormData({ ...formData, nacalculatie_klaar: e.target.checked })}
-                  className="w-4 h-4 text-green-600 rounded"
-                />
-                <label htmlFor="nacalculatie_klaar" className="text-sm text-gray-700">Nagecalculeerd</label>
-              </div>
+              <label className="flex items-center gap-2 cursor-pointer text-sm">
+                <input type="checkbox" checked={formData.uren_compleet || false} onChange={(e) => setFormData({ ...formData, uren_compleet: e.target.checked })} className="w-4 h-4 rounded text-amber-600" />
+                Uren compleet
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer text-sm">
+                <input type="checkbox" checked={formData.nacalculatie_klaar || false} onChange={(e) => setFormData({ ...formData, nacalculatie_klaar: e.target.checked })} className="w-4 h-4 rounded text-green-600" />
+                Nagecalculeerd
+              </label>
             </div>
           </div>
         </div>
 
         <div className="p-4 border-t flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 border rounded hover:bg-gray-50">Annuleren</button>
-          <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+          <button onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Annuleren</button>
+          <button onClick={handleSave} disabled={saving} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
             {saving ? 'Opslaan...' : 'Opslaan'}
           </button>
         </div>
@@ -3416,81 +3436,19 @@ const KanbanBoard = ({ projecten }) => {
     loadAllOrders()
   }, [projecten])
 
-  // Calculate progress within current phase
-  const getProgress = (order, column) => {
-    const offerteStatussen = ['nogOpstellen', 'concept', 'verzonden', 'goedgekeurd', 'afgekeurd']
-    const werkvoorbereidingStatussen = ['nietGestart', 'tekeningBezig', 'tekeningKlaar', 'materialenBesteld', 'materialenBinnen', 'klaar']
-    const productieStatussen = ['wacht', 'inProductie', 'klaar']
-    const plaatsingStatussen = ['wacht', 'ingepland', 'bezig', 'geplaatst']
-
-    switch (column) {
-      case 'offerte': {
-        const idx = offerteStatussen.indexOf(order.offerte_status || 'nogOpstellen')
-        return `${Math.max(idx + 1, 1)}/${offerteStatussen.length}`
-      }
-      case 'werkvoorbereiding': {
-        const idx = werkvoorbereidingStatussen.indexOf(order.werkvoorbereiding_status || 'nietGestart')
-        return `${Math.max(idx + 1, 1)}/${werkvoorbereidingStatussen.length}`
-      }
-      case 'productie': {
-        const idx = productieStatussen.indexOf(order.productie_status || 'wacht')
-        return `${Math.max(idx + 1, 1)}/${productieStatussen.length}`
-      }
-      case 'plaatsing': {
-        const idx = plaatsingStatussen.indexOf(order.plaatsing_status || 'wacht')
-        return `${Math.max(idx + 1, 1)}/${plaatsingStatussen.length}`
-      }
-      case 'afgerond':
-        return '✓'
-      default:
-        return ''
-    }
-  }
-
   const handleOrderUpdate = (updatedOrder) => {
-    setAllOrders(allOrders.map(o => o.id === updatedOrder.id ? updatedOrder : o))
+    setAllOrders(allOrders.map(o => o.id === updatedOrder.id ? { ...updatedOrder, project: o.project } : o))
   }
 
-  // Status updates based on target column
-  const getStatusUpdates = (targetColumn) => {
-    switch (targetColumn) {
-      case 'offerte':
-        return {
-          offerte_status: 'concept',
-          werkvoorbereiding_status: 'nietGestart',
-          productie_status: 'wacht',
-          plaatsing_status: 'wacht'
-        }
-      case 'werkvoorbereiding':
-        return {
-          offerte_status: 'goedgekeurd',
-          werkvoorbereiding_status: 'nietGestart',
-          productie_status: 'wacht',
-          plaatsing_status: 'wacht'
-        }
-      case 'productie':
-        return {
-          offerte_status: 'goedgekeurd',
-          werkvoorbereiding_status: 'klaar',
-          productie_status: 'wacht',
-          plaatsing_status: 'wacht'
-        }
-      case 'plaatsing':
-        return {
-          offerte_status: 'goedgekeurd',
-          werkvoorbereiding_status: 'klaar',
-          productie_status: 'klaar',
-          plaatsing_status: 'wacht'
-        }
-      case 'afgerond':
-        return {
-          offerte_status: 'goedgekeurd',
-          werkvoorbereiding_status: 'klaar',
-          productie_status: 'klaar',
-          plaatsing_status: 'geplaatst'
-        }
-      default:
-        return {}
+  // Map kanban column to default status when dropping
+  const getDropStatus = (targetKolom) => {
+    switch (targetKolom) {
+      case 'offerte': return 'prijsvraag'
+      case 'voorbereiding': return 'goedgekeurd'
+      case 'productie': return 'in_productie'
+      case 'plaatsing': return 'klaar_voor_plaatsing'
+      case 'afgerond': return 'opgeleverd'
+      default: return 'prijsvraag'
     }
   }
 
@@ -3505,30 +3463,28 @@ const KanbanBoard = ({ projecten }) => {
     setDragOverColumn(columnId)
   }
 
-  const handleDragLeave = () => {
-    setDragOverColumn(null)
-  }
+  const handleDragLeave = () => setDragOverColumn(null)
 
   const handleDrop = async (e, targetColumn) => {
     e.preventDefault()
     setDragOverColumn(null)
-
     if (!draggedOrder) return
 
-    const updates = getStatusUpdates(targetColumn)
+    const newStatus = getDropStatus(targetColumn)
 
-    try {
-      await supabase.from('orders').update(updates).eq('id', draggedOrder.id)
-
-      // Update local state
-      setAllOrders(allOrders.map(o =>
-        o.id === draggedOrder.id ? { ...o, ...updates } : o
-      ))
-    } catch (err) {
-      console.error('Fout bij updaten:', err)
-      alert('Fout bij verplaatsen: ' + err.message)
+    // Block moving to productie if not ready
+    if (targetColumn === 'productie' && !kanNaarProductie(draggedOrder)) {
+      alert('Deze order kan nog niet naar productie: tekening moet goedgekeurd zijn EN materiaal moet binnen zijn.')
+      setDraggedOrder(null)
+      return
     }
 
+    try {
+      await supabase.from('orders').update({ status: newStatus }).eq('id', draggedOrder.id)
+      setAllOrders(allOrders.map(o => o.id === draggedOrder.id ? { ...o, status: newStatus } : o))
+    } catch (err) {
+      alert('Fout bij verplaatsen: ' + err.message)
+    }
     setDraggedOrder(null)
   }
 
@@ -3539,13 +3495,28 @@ const KanbanBoard = ({ projecten }) => {
 
   if (loading) return <LoadingSpinner />
 
-  const kolommen = [
-    { id: 'offerte', titel: '📋 Offerte', color: 'bg-orange-50', borderColor: 'border-orange-300', orders: allOrders.filter(o => o.offerte_status !== 'goedgekeurd' && o.offerte_status !== 'afgekeurd') },
-    { id: 'werkvoorbereiding', titel: '🔧 Werkvoorb.', color: 'bg-blue-50', borderColor: 'border-blue-300', orders: allOrders.filter(o => o.offerte_status === 'goedgekeurd' && o.werkvoorbereiding_status !== 'klaar') },
-    { id: 'productie', titel: '🏭 Productie', color: 'bg-purple-50', borderColor: 'border-purple-300', orders: allOrders.filter(o => o.werkvoorbereiding_status === 'klaar' && o.productie_status !== 'klaar') },
-    { id: 'plaatsing', titel: '🚚 Plaatsing', color: 'bg-indigo-50', borderColor: 'border-indigo-300', orders: allOrders.filter(o => o.productie_status === 'klaar' && o.plaatsing_status !== 'geplaatst') },
-    { id: 'afgerond', titel: '✅ Afgerond', color: 'bg-green-50', borderColor: 'border-green-300', orders: allOrders.filter(o => o.plaatsing_status === 'geplaatst') }
-  ]
+  // Group orders by kanban columns using the new status
+  const getOrderKolom = (order) => {
+    const status = order.status || 'prijsvraag'
+    for (const kolom of kanbanKolommen) {
+      if (kolom.statussen.includes(status)) return kolom.id
+    }
+    return 'offerte'
+  }
+
+  const kolomColors = {
+    offerte: { bg: 'bg-orange-50', border: 'border-orange-300' },
+    voorbereiding: { bg: 'bg-blue-50', border: 'border-blue-300' },
+    productie: { bg: 'bg-purple-50', border: 'border-purple-300' },
+    plaatsing: { bg: 'bg-cyan-50', border: 'border-cyan-300' },
+    afgerond: { bg: 'bg-green-50', border: 'border-green-300' }
+  }
+
+  const kolommen = kanbanKolommen.map(k => ({
+    ...k,
+    ...(kolomColors[k.id] || {}),
+    orders: allOrders.filter(o => getOrderKolom(o) === k.id)
+  }))
 
   return (
     <>
@@ -3553,36 +3524,55 @@ const KanbanBoard = ({ projecten }) => {
         {kolommen.map(kolom => (
           <div
             key={kolom.id}
-            className={`${kolom.color} rounded-lg p-3 min-h-64 transition-all ${
-              dragOverColumn === kolom.id ? `ring-2 ring-offset-2 ${kolom.borderColor} ring-current` : ''
+            className={`${kolom.bg} rounded-xl p-3 min-h-64 transition-all ${
+              dragOverColumn === kolom.id ? `ring-2 ring-offset-2 ${kolom.border} ring-current` : ''
             }`}
             onDragOver={(e) => handleDragOver(e, kolom.id)}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, kolom.id)}
           >
-            <div className="font-medium text-sm mb-3 pb-2 border-b">{kolom.titel} ({kolom.orders.length})</div>
+            <div className="font-semibold text-sm mb-3 pb-2 border-b flex justify-between">
+              <span>{kolom.label}</span>
+              <span className="text-xs bg-white px-2 py-0.5 rounded-full">{kolom.orders.length}</span>
+            </div>
             <div className="space-y-2">
-              {kolom.orders.map(order => (
-                <div
-                  key={order.id}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, order)}
-                  onDragEnd={handleDragEnd}
-                  onClick={() => setSelectedOrder(order)}
-                  className={`rounded border p-2 text-sm shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-shadow ${
-                    order.dringend ? 'bg-red-50 border-red-300' : 'bg-white'
-                  } ${draggedOrder?.id === order.id ? 'opacity-50' : ''}`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="font-medium flex items-center gap-1">
-                      {order.dringend && <span className="text-red-500">🚨</span>}
-                      {order.naam}
+              {kolom.orders.map(order => {
+                const statusCfg = orderStatusConfig[order.status] || orderStatusConfig.prijsvraag
+                return (
+                  <div
+                    key={order.id}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, order)}
+                    onDragEnd={handleDragEnd}
+                    onClick={() => setSelectedOrder(order)}
+                    className={`rounded-lg border-2 p-2.5 text-sm shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${
+                      order.dringend ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'
+                    } ${draggedOrder?.id === order.id ? 'opacity-40' : ''}`}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="font-medium text-gray-800 flex items-center gap-1">
+                        {order.dringend && <span className="text-red-500">🚨</span>}
+                        {order.is_meerwerk && <span className="text-amber-500 text-xs">+</span>}
+                        {order.naam}
+                      </div>
                     </div>
-                    <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{getProgress(order, kolom.id)}</span>
+                    <div className="text-xs text-gray-500 mb-1.5">{order.project?.emoji} {order.project?.naam}</div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusCfg.kleur}`}>{statusCfg.label}</span>
+                      {kolom.id === 'voorbereiding' && (
+                        <>
+                          <span className={`text-[10px] px-1 py-0.5 rounded ${order.tekening_goedgekeurd ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                            📐{order.tekening_goedgekeurd ? '✓' : ''}
+                          </span>
+                          <span className={`text-[10px] px-1 py-0.5 rounded ${order.materiaal_binnen ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                            📦{order.materiaal_binnen ? '✓' : ''}
+                          </span>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-500">{order.project?.naam}</div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         ))}
