@@ -5,7 +5,7 @@ import * as XLSX from 'xlsx'
 // =====================================================
 // CONSTANTEN
 // =====================================================
-const medewerkers = ['Pavel', 'Ruben', 'Jos', 'Jurgen', 'Dinko', 'Niels']
+// medewerkers worden nu uit de database geladen (zie App component)
 const eenheden = ['stuk', 'plaat', 'meter', 'uur', 'dag', 'm²', 'm³', 'kg', 'set', 'forfait']
 
 const bibCategorieen = [
@@ -82,9 +82,9 @@ const ConnectionStatus = ({ isOnline, lastSync }) => (
 )
 
 // Uren Input Component
-const UrenInput = ({ uren = {}, onChange, disabled }) => {
+const UrenInput = ({ uren = {}, onChange, disabled, medewerkers = [] }) => {
   const [showForm, setShowForm] = useState(false)
-  const [selectedMedewerker, setSelectedMedewerker] = useState(medewerkers[0])
+  const [selectedMedewerker, setSelectedMedewerker] = useState(medewerkers[0] || '')
   const [aantalUren, setAantalUren] = useState('')
   const totaalUren = Object.values(uren).reduce((sum, u) => sum + u, 0)
 
@@ -123,8 +123,8 @@ const UrenInput = ({ uren = {}, onChange, disabled }) => {
 }
 
 // Productie Uren Input Component with type werk
-const ProductieUrenInput = ({ urenLijst = [], onChange, isExpanded, onToggle }) => {
-  const [selectedMedewerker, setSelectedMedewerker] = useState(medewerkers[0])
+const ProductieUrenInput = ({ urenLijst = [], onChange, isExpanded, onToggle, medewerkers = [] }) => {
+  const [selectedMedewerker, setSelectedMedewerker] = useState(medewerkers[0] || '')
   const [aantalUren, setAantalUren] = useState('')
   const [typeWerk, setTypeWerk] = useState('onderdelen')
 
@@ -1585,7 +1585,7 @@ const OrderItemsBuilder = ({ orderItems, bibliotheek, sjablonen, onAddItem, onUp
 // =====================================================
 // PROJECT DETAIL
 // =====================================================
-const ProjectDetail = ({ project, bibliotheek, sjablonen, onBack, onRefresh, onUpdateProject, onDeleteProject }) => {
+const ProjectDetail = ({ project, bibliotheek, sjablonen, medewerkers = [], onBack, onRefresh, onUpdateProject, onDeleteProject }) => {
   const [orders, setOrders] = useState([])
   const [orderItems, setOrderItems] = useState({})
   const [activeTab, setActiveTab] = useState('offerte')
@@ -2055,7 +2055,9 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, onBack, onRefresh, onU
                   onChange={(u) => updateOrder(order.id, { productie_uren_lijst: u })}
                   isExpanded={expandedProductieUren[order.id] || false}
                   onToggle={() => setExpandedProductieUren({ ...expandedProductieUren, [order.id]: !expandedProductieUren[order.id] })}
+                  medewerkers={medewerkers.map(m => m.naam || m)}
                 />
+                <OrderProducten orderId={order.id} />
               </div>
             ))}
             {orders.filter(o => o.offerte_status === 'goedgekeurd').length === 0 && (
@@ -2078,7 +2080,7 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, onBack, onRefresh, onU
                   </select>
                   <input type="date" value={order.plaatsing_datum || ''} onChange={(e) => updateOrder(order.id, { plaatsing_datum: e.target.value })} className="border rounded px-3 py-2" />
                 </div>
-                <UrenInput uren={order.plaatsing_uren || {}} onChange={(u) => updateOrder(order.id, { plaatsing_uren: u })} />
+                <UrenInput uren={order.plaatsing_uren || {}} onChange={(u) => updateOrder(order.id, { plaatsing_uren: u })} medewerkers={medewerkers.map(m => m.naam || m)} />
               </div>
             ))}
             {orders.filter(o => o.productie_status === 'klaar').length === 0 && (
@@ -2108,6 +2110,513 @@ const ProjectCard = ({ project, onClick }) => (
     <div className="text-sm text-gray-600">👤 {project.klant || '-'}</div>
   </div>
 )
+
+// =====================================================
+// ORDER PRODUCTEN COMPONENT
+// =====================================================
+const OrderProducten = ({ orderId }) => {
+  const [producten, setProducten] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [nieuwProduct, setNieuwProduct] = useState({ naam: '', aantal: 1, eenheid: 'stuk' })
+
+  useEffect(() => {
+    loadProducten()
+  }, [orderId])
+
+  const loadProducten = async () => {
+    try {
+      const { data } = await supabase.from('order_producten').select('*').eq('order_id', orderId).order('created_at')
+      setProducten(data || [])
+    } catch (e) {
+      console.error('Fout bij laden producten:', e)
+    }
+    setLoading(false)
+  }
+
+  const addProduct = async () => {
+    if (!nieuwProduct.naam.trim()) return
+    try {
+      const { data: created } = await supabase.from('order_producten').insert({
+        order_id: orderId,
+        naam: nieuwProduct.naam.trim(),
+        aantal: parseFloat(nieuwProduct.aantal) || 1,
+        eenheid: nieuwProduct.eenheid
+      }).select().single()
+      if (created) setProducten([...producten, created])
+      setNieuwProduct({ naam: '', aantal: 1, eenheid: 'stuk' })
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+  }
+
+  const deleteProduct = async (id) => {
+    try {
+      await supabase.from('order_producten').delete().eq('id', id)
+      setProducten(producten.filter(p => p.id !== id))
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+  }
+
+  if (loading) return <div className="text-sm text-gray-400">Laden...</div>
+
+  return (
+    <div className="mt-3">
+      <div className="text-sm font-medium text-gray-700 mb-2">📦 Producten</div>
+      {producten.length > 0 && (
+        <div className="space-y-1 mb-2">
+          {producten.map(p => (
+            <div key={p.id} className="flex items-center gap-2 text-sm bg-gray-50 rounded px-2 py-1">
+              <span className="flex-1">{p.aantal} {p.eenheid} — {p.naam}</span>
+              <button onClick={() => deleteProduct(p.id)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2 items-center">
+        <input
+          type="text"
+          value={nieuwProduct.naam}
+          onChange={(e) => setNieuwProduct({ ...nieuwProduct, naam: e.target.value })}
+          placeholder="Product naam..."
+          className="flex-1 border rounded px-2 py-1 text-sm"
+          onKeyDown={(e) => e.key === 'Enter' && addProduct()}
+        />
+        <input
+          type="number"
+          value={nieuwProduct.aantal}
+          onChange={(e) => setNieuwProduct({ ...nieuwProduct, aantal: e.target.value })}
+          className="w-16 border rounded px-2 py-1 text-sm text-right"
+          step="0.5"
+          min="0"
+        />
+        <select
+          value={nieuwProduct.eenheid}
+          onChange={(e) => setNieuwProduct({ ...nieuwProduct, eenheid: e.target.value })}
+          className="border rounded px-2 py-1 text-sm"
+        >
+          {eenheden.map(e => <option key={e} value={e}>{e}</option>)}
+        </select>
+        <button onClick={addProduct} className="px-2 py-1 bg-blue-600 text-white rounded text-sm">+</button>
+      </div>
+    </div>
+  )
+}
+
+// =====================================================
+// MEDEWERKER BEHEER
+// =====================================================
+const MedewerkerBeheer = ({ medewerkers, onRefresh }) => {
+  const [alleMedewerkers, setAlleMedewerkers] = useState([])
+  const [nieuweNaam, setNieuweNaam] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadAll()
+  }, [])
+
+  const loadAll = async () => {
+    const { data } = await supabase.from('medewerkers').select('*').order('naam')
+    setAlleMedewerkers(data || [])
+    setLoading(false)
+  }
+
+  const addMedewerker = async () => {
+    if (!nieuweNaam.trim()) return
+    try {
+      await supabase.from('medewerkers').insert({ naam: nieuweNaam.trim() })
+      setNieuweNaam('')
+      loadAll()
+      onRefresh()
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+  }
+
+  const toggleActief = async (id, actief) => {
+    try {
+      await supabase.from('medewerkers').update({ actief: !actief }).eq('id', id)
+      loadAll()
+      onRefresh()
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+  }
+
+  if (loading) return <LoadingSpinner />
+
+  return (
+    <div className="bg-white rounded-lg border p-4 mb-4">
+      <h3 className="font-semibold mb-3">👷 Medewerkers beheren</h3>
+      <div className="space-y-2 mb-3">
+        {alleMedewerkers.map(m => (
+          <div key={m.id} className={`flex items-center justify-between px-3 py-2 rounded ${m.actief ? 'bg-green-50' : 'bg-gray-100 opacity-60'}`}>
+            <span className={m.actief ? '' : 'line-through'}>{m.naam}</span>
+            <button
+              onClick={() => toggleActief(m.id, m.actief)}
+              className={`text-xs px-2 py-1 rounded ${m.actief ? 'bg-red-100 text-red-700 hover:bg-red-200' : 'bg-green-100 text-green-700 hover:bg-green-200'}`}
+            >
+              {m.actief ? 'Deactiveer' : 'Activeer'}
+            </button>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={nieuweNaam}
+          onChange={(e) => setNieuweNaam(e.target.value)}
+          placeholder="Nieuwe medewerker..."
+          className="flex-1 border rounded px-3 py-2"
+          onKeyDown={(e) => e.key === 'Enter' && addMedewerker()}
+        />
+        <button onClick={addMedewerker} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">+ Toevoegen</button>
+      </div>
+    </div>
+  )
+}
+
+// =====================================================
+// TIJDSREGISTRATIE
+// =====================================================
+const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
+  const [datum, setDatum] = useState(new Date().toISOString().split('T')[0])
+  const [selectedMedewerker, setSelectedMedewerker] = useState(null)
+  const [regels, setRegels] = useState([])
+  const [allOrders, setAllOrders] = useState([])
+  const [saving, setSaving] = useState(false)
+  const [showBeheer, setShowBeheer] = useState(false)
+  const [nieuwProjectNaam, setNieuwProjectNaam] = useState('')
+  const [aanmakenProject, setAanmakenProject] = useState(null) // regelIndex
+  const [nieuwOrderNaam, setNieuwOrderNaam] = useState('')
+  const [aanmakenOrder, setAanmakenOrder] = useState(null) // regelIndex
+
+  // Load all orders
+  useEffect(() => {
+    const load = async () => {
+      const { data } = await supabase.from('orders').select('*')
+      setAllOrders(data || [])
+    }
+    load()
+  }, [projecten])
+
+  // Load existing registrations when medewerker or datum changes
+  useEffect(() => {
+    if (!selectedMedewerker) return
+    const load = async () => {
+      const { data } = await supabase.from('uren_registratie')
+        .select('*')
+        .eq('medewerker_id', selectedMedewerker.id)
+        .eq('datum', datum)
+        .order('created_at')
+      if (data && data.length > 0) {
+        setRegels(data.map(r => ({
+          id: r.id,
+          uren: r.uren,
+          project_id: r.project_id,
+          order_id: r.order_id,
+          type_werk: r.type_werk || 'onderdelen',
+          notitie: r.notitie || '',
+          saved: true
+        })))
+      } else {
+        setRegels([{ uren: '', project_id: '', order_id: '', type_werk: 'onderdelen', notitie: '', saved: false }])
+      }
+    }
+    load()
+  }, [selectedMedewerker, datum])
+
+  const addRegel = () => {
+    setRegels([...regels, { uren: '', project_id: '', order_id: '', type_werk: 'onderdelen', notitie: '', saved: false }])
+  }
+
+  const updateRegel = (index, field, value) => {
+    const updated = [...regels]
+    updated[index] = { ...updated[index], [field]: value, saved: false }
+    if (field === 'project_id') {
+      updated[index].order_id = '' // reset order when project changes
+    }
+    setRegels(updated)
+  }
+
+  const removeRegel = async (index) => {
+    const regel = regels[index]
+    if (regel.id) {
+      try {
+        await supabase.from('uren_registratie').delete().eq('id', regel.id)
+      } catch (e) {
+        alert('Fout: ' + e.message)
+        return
+      }
+    }
+    setRegels(regels.filter((_, i) => i !== index))
+  }
+
+  const handleSave = async () => {
+    if (!selectedMedewerker) return
+    setSaving(true)
+
+    try {
+      for (const regel of regels) {
+        if (!regel.uren || !regel.project_id || !regel.order_id) continue
+
+        const data = {
+          medewerker_id: selectedMedewerker.id,
+          datum: datum,
+          project_id: regel.project_id,
+          order_id: regel.order_id,
+          type_werk: regel.type_werk,
+          uren: parseFloat(regel.uren),
+          notitie: regel.notitie || null
+        }
+
+        if (regel.id) {
+          await supabase.from('uren_registratie').update(data).eq('id', regel.id)
+        } else {
+          const { data: created } = await supabase.from('uren_registratie').insert(data).select().single()
+          if (created) regel.id = created.id
+        }
+        regel.saved = true
+      }
+
+      setRegels([...regels])
+      alert('Uren opgeslagen!')
+    } catch (e) {
+      alert('Fout bij opslaan: ' + e.message)
+    }
+    setSaving(false)
+  }
+
+  const createInlineProject = async (regelIndex) => {
+    if (!nieuwProjectNaam.trim()) return
+    try {
+      const nummer = `PRJ-${new Date().getFullYear()}-${(projecten.length + 1).toString().padStart(3, '0')}`
+      const { data: created } = await supabase.from('projecten').insert({
+        project_nummer: nummer,
+        naam: nieuwProjectNaam.trim(),
+        klant: ''
+      }).select().single()
+      if (created) {
+        updateRegel(regelIndex, 'project_id', created.id)
+        onRefresh()
+      }
+      setNieuwProjectNaam('')
+      setAanmakenProject(null)
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+  }
+
+  const createInlineOrder = async (regelIndex) => {
+    if (!nieuwOrderNaam.trim()) return
+    const regel = regels[regelIndex]
+    if (!regel.project_id) { alert('Selecteer eerst een project'); return }
+    try {
+      const { data: created } = await supabase.from('orders').insert({
+        project_id: regel.project_id,
+        naam: nieuwOrderNaam.trim(),
+        added_from: 'tijdsregistratie'
+      }).select().single()
+      if (created) {
+        setAllOrders([...allOrders, created])
+        updateRegel(regelIndex, 'order_id', created.id)
+      }
+      setNieuwOrderNaam('')
+      setAanmakenOrder(null)
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+  }
+
+  const totaalUren = regels.reduce((sum, r) => sum + (parseFloat(r.uren) || 0), 0)
+
+  const ordersVoorProject = (projectId) => allOrders.filter(o => o.project_id === projectId)
+
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h2 className="text-lg font-semibold">⏱️ Tijdsregistratie</h2>
+        <button
+          onClick={() => setShowBeheer(!showBeheer)}
+          className="px-3 py-1.5 bg-gray-100 rounded text-sm hover:bg-gray-200"
+        >
+          👷 Medewerkers beheren
+        </button>
+      </div>
+
+      {showBeheer && <MedewerkerBeheer medewerkers={medewerkers} onRefresh={onRefresh} />}
+
+      <div className="bg-white rounded-lg border p-4 mb-4">
+        <div className="flex flex-wrap gap-4 mb-4">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Datum</label>
+            <input
+              type="date"
+              value={datum}
+              onChange={(e) => setDatum(e.target.value)}
+              className="border rounded px-3 py-2"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Medewerker</label>
+            <select
+              value={selectedMedewerker?.id || ''}
+              onChange={(e) => {
+                const m = medewerkers.find(m => m.id === e.target.value)
+                setSelectedMedewerker(m || null)
+              }}
+              className="border rounded px-3 py-2 min-w-48"
+            >
+              <option value="">-- Kies medewerker --</option>
+              {medewerkers.map(m => (
+                <option key={m.id} value={m.id}>{m.naam}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {selectedMedewerker && (
+        <div className="bg-white rounded-lg border p-4">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="font-medium">Uren voor {selectedMedewerker.naam} — {new Date(datum).toLocaleDateString('nl-BE', { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
+            <div className="text-lg font-semibold text-blue-600">Totaal: {totaalUren}u</div>
+          </div>
+
+          <div className="space-y-3">
+            {regels.map((regel, index) => (
+              <div key={index} className={`p-3 rounded-lg border ${regel.saved ? 'bg-green-50 border-green-200' : 'bg-gray-50'}`}>
+                <div className="flex flex-wrap gap-2 items-center">
+                  {/* Uren */}
+                  <input
+                    type="number"
+                    value={regel.uren}
+                    onChange={(e) => updateRegel(index, 'uren', e.target.value)}
+                    placeholder="Uren"
+                    className="w-20 border rounded px-2 py-1.5 text-sm text-right"
+                    step="0.5"
+                    min="0"
+                  />
+
+                  {/* Project */}
+                  {aanmakenProject === index ? (
+                    <div className="flex gap-1 items-center">
+                      <input
+                        type="text"
+                        value={nieuwProjectNaam}
+                        onChange={(e) => setNieuwProjectNaam(e.target.value)}
+                        placeholder="Projectnaam..."
+                        className="border rounded px-2 py-1.5 text-sm w-40"
+                        autoFocus
+                        onKeyDown={(e) => e.key === 'Enter' && createInlineProject(index)}
+                      />
+                      <button onClick={() => createInlineProject(index)} className="px-2 py-1.5 bg-green-600 text-white rounded text-sm">✓</button>
+                      <button onClick={() => setAanmakenProject(null)} className="px-2 py-1.5 bg-gray-300 rounded text-sm">✕</button>
+                    </div>
+                  ) : (
+                    <select
+                      value={regel.project_id}
+                      onChange={(e) => {
+                        if (e.target.value === '__nieuw__') {
+                          setAanmakenProject(index)
+                        } else {
+                          updateRegel(index, 'project_id', e.target.value)
+                        }
+                      }}
+                      className="border rounded px-2 py-1.5 text-sm min-w-40"
+                    >
+                      <option value="">Project...</option>
+                      {projecten.map(p => (
+                        <option key={p.id} value={p.id}>{p.emoji || ''} {p.naam || p.project_nummer}</option>
+                      ))}
+                      <option value="__nieuw__">+ Nieuw project</option>
+                    </select>
+                  )}
+
+                  {/* Order */}
+                  {aanmakenOrder === index ? (
+                    <div className="flex gap-1 items-center">
+                      <input
+                        type="text"
+                        value={nieuwOrderNaam}
+                        onChange={(e) => setNieuwOrderNaam(e.target.value)}
+                        placeholder="Order naam..."
+                        className="border rounded px-2 py-1.5 text-sm w-40"
+                        autoFocus
+                        onKeyDown={(e) => e.key === 'Enter' && createInlineOrder(index)}
+                      />
+                      <button onClick={() => createInlineOrder(index)} className="px-2 py-1.5 bg-green-600 text-white rounded text-sm">✓</button>
+                      <button onClick={() => setAanmakenOrder(null)} className="px-2 py-1.5 bg-gray-300 rounded text-sm">✕</button>
+                    </div>
+                  ) : (
+                    <select
+                      value={regel.order_id}
+                      onChange={(e) => {
+                        if (e.target.value === '__nieuw__') {
+                          setAanmakenOrder(index)
+                        } else {
+                          updateRegel(index, 'order_id', e.target.value)
+                        }
+                      }}
+                      className="border rounded px-2 py-1.5 text-sm min-w-40"
+                      disabled={!regel.project_id}
+                    >
+                      <option value="">Order...</option>
+                      {ordersVoorProject(regel.project_id).map(o => (
+                        <option key={o.id} value={o.id}>{o.naam}</option>
+                      ))}
+                      <option value="__nieuw__">+ Nieuwe order</option>
+                    </select>
+                  )}
+
+                  {/* Type werk */}
+                  <div className="flex gap-1">
+                    {typeWerkOpties.map(tw => (
+                      <button
+                        key={tw}
+                        onClick={() => updateRegel(index, 'type_werk', tw)}
+                        className={`px-2 py-1 text-xs rounded ${regel.type_werk === tw ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-100'}`}
+                      >
+                        {tw}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Verwijder */}
+                  <button onClick={() => removeRegel(index)} className="text-red-400 hover:text-red-600 ml-auto">✕</button>
+                </div>
+
+                {/* Producten per order */}
+                {regel.order_id && (
+                  <OrderProducten orderId={regel.order_id} />
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="flex justify-between items-center mt-4">
+            <button onClick={addRegel} className="px-4 py-2 border rounded text-sm hover:bg-gray-50">
+              + Regel toevoegen
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-medium"
+            >
+              {saving ? 'Opslaan...' : '💾 Opslaan'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!selectedMedewerker && (
+        <div className="text-center py-12 text-gray-400 bg-white rounded-lg border">
+          Selecteer een medewerker om uren in te vullen
+        </div>
+      )}
+    </div>
+  )
+}
 
 // =====================================================
 // KANBAN ORDER MODAL
@@ -2465,6 +2974,7 @@ export default function App() {
   const [projecten, setProjecten] = useState([])
   const [bibliotheek, setBibliotheek] = useState([])
   const [sjablonen, setSjablonen] = useState([])
+  const [medewerkers, setMedewerkers] = useState([])
   const [selectedProject, setSelectedProject] = useState(null)
   const [loading, setLoading] = useState(true)
   const [isOnline, setIsOnline] = useState(false)
@@ -2491,7 +3001,9 @@ export default function App() {
       console.log('Sjablonen loaded:', sjablonenData?.length)
 
       const { data: sjabloonItems } = await supabase.from('sjabloon_items').select('*')
-      
+
+      const { data: medewerkersData } = await supabase.from('medewerkers').select('*').eq('actief', true).order('naam')
+
       const sjablonenMetItems = (sjablonenData || []).map(s => ({
         ...s,
         items: (sjabloonItems || []).filter(i => i.sjabloon_id === s.id)
@@ -2500,6 +3012,7 @@ export default function App() {
       setProjecten(projectenData || [])
       setBibliotheek(bibliotheekData || [])
       setSjablonen(sjablonenMetItems)
+      setMedewerkers(medewerkersData || [])
       setIsOnline(true)
       setLastSync(new Date().toISOString())
       console.log('All data loaded successfully!')
@@ -2575,16 +3088,22 @@ export default function App() {
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-bold">🪑 Projectbeheer</h1>
             <nav className="flex flex-wrap gap-1">
-              {['projecten', 'kanban', 'bibliotheek', 'sjablonen'].map(v => (
+              {[
+                { id: 'projecten', icon: '📁', label: 'Projecten' },
+                { id: 'kanban', icon: '📋', label: 'Kanban' },
+                { id: 'tijdsregistratie', icon: '⏱️', label: 'Uren' },
+                { id: 'bibliotheek', icon: '📚', label: 'Bibliotheek' },
+                { id: 'sjablonen', icon: '📋', label: 'Sjablonen' }
+              ].map(v => (
                 <button
-                  key={v}
+                  key={v.id}
                   onClick={() => {
-                    setView(v)
-                    if (v !== 'projecten') setSelectedProject(null)
+                    setView(v.id)
+                    if (v.id !== 'projecten') setSelectedProject(null)
                   }}
-                  className={`px-3 py-1.5 rounded text-sm ${view === v && !selectedProject ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
+                  className={`px-3 py-1.5 rounded text-sm ${view === v.id && !selectedProject ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
                 >
-                  {v === 'projecten' ? '📁' : v === 'kanban' ? '📋' : v === 'bibliotheek' ? '📚' : '📋'} <span className="hidden sm:inline">{v.charAt(0).toUpperCase() + v.slice(1)}</span>
+                  {v.icon} <span className="hidden sm:inline">{v.label}</span>
                 </button>
               ))}
               {selectedProject && (
@@ -2607,6 +3126,7 @@ export default function App() {
             project={selectedProject}
             bibliotheek={bibliotheek}
             sjablonen={sjablonen}
+            medewerkers={medewerkers}
             onBack={() => { setSelectedProject(null); loadData() }}
             onRefresh={loadData}
             onUpdateProject={updateProject}
@@ -2624,6 +3144,7 @@ export default function App() {
               </div>
             )}
             {view === 'kanban' && <KanbanBoard projecten={projecten} />}
+            {view === 'tijdsregistratie' && <Tijdsregistratie projecten={projecten} medewerkers={medewerkers} onRefresh={loadData} />}
             {view === 'bibliotheek' && <BibliotheekBeheer bibliotheek={bibliotheek} onRefresh={loadData} />}
             {view === 'sjablonen' && <SjablonenBeheer sjablonen={sjablonen} bibliotheek={bibliotheek} onRefresh={loadData} />}
           </>
