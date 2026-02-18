@@ -3418,6 +3418,12 @@ const KanbanBoard = ({ projecten }) => {
   const [draggedOrder, setDraggedOrder] = useState(null)
   const [dragOverColumn, setDragOverColumn] = useState(null)
   const [selectedOrder, setSelectedOrder] = useState(null)
+  const [collapsedGroups, setCollapsedGroups] = useState({})
+
+  const toggleGroup = (kolomId, projectId) => {
+    const key = `${kolomId}-${projectId}`
+    setCollapsedGroups(prev => ({ ...prev, [key]: !prev[key] }))
+  }
 
   useEffect(() => {
     const loadAllOrders = async () => {
@@ -3544,14 +3550,24 @@ const KanbanBoard = ({ projecten }) => {
                   if (!perProject[pId]) perProject[pId] = { project: order.project, orders: [] }
                   perProject[pId].orders.push(order)
                 })
-                return Object.values(perProject).map(groep => (
+                const meerdereProjecten = Object.keys(perProject).length > 1
+                return Object.values(perProject).map(groep => {
+                  const groepKey = `${kolom.id}-${groep.project?.id || 'geen'}`
+                  const isCollapsed = collapsedGroups[groepKey]
+                  return (
                   <div key={groep.project?.id || 'geen'}>
-                    {Object.keys(perProject).length > 1 && (
-                      <div className="text-[11px] font-semibold text-gray-500 mb-1.5 flex items-center gap-1" style={{ color: groep.project?.kleur || undefined }}>
+                    {meerdereProjecten && (
+                      <div
+                        className="text-[11px] font-semibold text-gray-500 mb-1.5 flex items-center gap-1 cursor-pointer select-none hover:opacity-80 transition-opacity"
+                        style={{ color: groep.project?.kleur || undefined }}
+                        onClick={() => toggleGroup(kolom.id, groep.project?.id || 'geen')}
+                      >
+                        <span className={`text-[9px] transition-transform inline-block ${isCollapsed ? '' : 'rotate-90'}`}>▶</span>
                         {groep.project?.emoji || '📁'} {groep.project?.naam || 'Geen project'}
                         <span className="text-[10px] font-normal text-gray-400">({groep.orders.length})</span>
                       </div>
                     )}
+                    {!isCollapsed && (
                     <div className="space-y-2">
                       {groep.orders.map(order => {
                         const statusCfg = orderStatusConfig[order.status] || orderStatusConfig.prijsvraag
@@ -3595,8 +3611,10 @@ const KanbanBoard = ({ projecten }) => {
                         )
                       })}
                     </div>
+                    )}
                   </div>
-                ))
+                  )
+                })
               })()}
             </div>
           </div>
