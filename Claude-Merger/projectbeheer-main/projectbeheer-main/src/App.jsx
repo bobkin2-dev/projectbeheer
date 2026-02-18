@@ -3520,22 +3520,22 @@ const KanbanBoard = ({ projecten }) => {
 
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3" style={{ minWidth: 0 }}>
         {kolommen.map(kolom => (
           <div
             key={kolom.id}
-            className={`${kolom.bg} rounded-xl p-3 min-h-64 transition-all ${
+            className={`${kolom.bg} rounded-xl p-3 min-h-64 transition-all flex flex-col ${
               dragOverColumn === kolom.id ? `ring-2 ring-offset-2 ${kolom.border} ring-current` : ''
             }`}
             onDragOver={(e) => handleDragOver(e, kolom.id)}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, kolom.id)}
           >
-            <div className="font-semibold text-sm mb-3 pb-2 border-b flex justify-between">
+            <div className="font-semibold text-sm mb-3 pb-2 border-b border-gray-200/50 flex justify-between items-center">
               <span>{kolom.label}</span>
-              <span className="text-xs bg-white px-2 py-0.5 rounded-full">{kolom.orders.length}</span>
+              <span className="text-[10px] font-bold bg-white/70 px-2 py-0.5 rounded-full text-gray-500">{kolom.orders.length}</span>
             </div>
-            <div className="space-y-3">
+            <div className="space-y-3 flex-1">
               {(() => {
                 // Groepeer orders per project
                 const perProject = {}
@@ -3552,7 +3552,7 @@ const KanbanBoard = ({ projecten }) => {
                         <span className="text-[10px] font-normal text-gray-400">({groep.orders.length})</span>
                       </div>
                     )}
-                    <div className={`gap-2 ${groep.orders.length > 6 ? 'grid grid-cols-2' : 'grid grid-cols-1'}`}>
+                    <div className="space-y-2">
                       {groep.orders.map(order => {
                         const statusCfg = orderStatusConfig[order.status] || orderStatusConfig.prijsvraag
                         return (
@@ -3562,34 +3562,35 @@ const KanbanBoard = ({ projecten }) => {
                             onDragStart={(e) => handleDragStart(e, order)}
                             onDragEnd={handleDragEnd}
                             onClick={() => setSelectedOrder(order)}
-                            className={`rounded-lg border-2 p-2.5 text-sm shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${
-                              order.dringend ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'
+                            className={`rounded-lg border p-2 text-sm shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${
+                              order.dringend ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200 hover:border-gray-300'
                             } ${draggedOrder?.id === order.id ? 'opacity-40' : ''}`}
                             style={groep.project?.kleur ? { borderLeftColor: groep.project.kleur, borderLeftWidth: '3px' } : {}}
                           >
-                            <div className="flex justify-between items-start mb-1">
-                              <div className="font-medium text-gray-800 flex items-center gap-1 text-xs leading-tight">
-                                {order.dringend && <span className="text-red-500">🚨</span>}
-                                {order.is_meerwerk && <span className="text-amber-500">+</span>}
-                                {order.naam}
+                            <div className="flex justify-between items-start gap-1">
+                              <div className="font-medium text-gray-800 flex items-center gap-1 text-xs leading-tight min-w-0">
+                                {order.dringend && <span className="text-red-500 shrink-0">🚨</span>}
+                                {order.is_meerwerk && <span className="text-amber-500 shrink-0 text-[10px] font-bold">MW</span>}
+                                <span className="truncate">{order.naam}</span>
                               </div>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded shrink-0 ${statusCfg.kleur}`}>{statusCfg.label}</span>
                             </div>
                             {Object.keys(perProject).length <= 1 && (
-                              <div className="text-[11px] text-gray-500 mb-1">{order.project?.emoji} {order.project?.naam}</div>
+                              <div className="text-[10px] text-gray-400 mt-0.5 truncate">{order.project?.emoji} {order.project?.naam}</div>
                             )}
-                            <div className="flex items-center gap-1 flex-wrap">
-                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusCfg.kleur}`}>{statusCfg.label}</span>
-                              {kolom.id === 'voorbereiding' && (
-                                <>
-                                  <span className={`text-[10px] px-1 py-0.5 rounded ${order.tekening_goedgekeurd ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                                    📐{order.tekening_goedgekeurd ? '✓' : ''}
-                                  </span>
-                                  <span className={`text-[10px] px-1 py-0.5 rounded ${order.materiaal_binnen ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                                    📦{order.materiaal_binnen ? '✓' : ''}
-                                  </span>
-                                </>
-                              )}
-                            </div>
+                            {kolom.id === 'voorbereiding' && (
+                              <div className="flex items-center gap-1.5 mt-1">
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded flex items-center gap-0.5 ${order.tekening_goedgekeurd ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                                  📐 Tekening{order.tekening_goedgekeurd ? ' ✓' : ''}
+                                </span>
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded flex items-center gap-0.5 ${order.materiaal_binnen ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
+                                  📦 Materiaal{order.materiaal_binnen ? ' ✓' : ''}
+                                </span>
+                              </div>
+                            )}
+                            {order.begrote_uren > 0 && (
+                              <div className="text-[9px] text-gray-400 mt-0.5">⏱ {order.begrote_uren}u begroot</div>
+                            )}
                           </div>
                         )
                       })}
@@ -3731,7 +3732,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-100">
       <header className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-2">
+        <div className="mx-auto px-6 py-3 flex flex-wrap justify-between items-center gap-2">
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-bold">🪑 Projectbeheer</h1>
             <nav className="flex flex-wrap gap-1">
@@ -3767,7 +3768,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 py-6">
+      <main className={`mx-auto px-6 py-6 ${view === 'kanban' && !selectedProject ? 'max-w-full' : 'max-w-[1600px]'}`}>
         {selectedProject ? (
           <ProjectDetail
             project={selectedProject}
