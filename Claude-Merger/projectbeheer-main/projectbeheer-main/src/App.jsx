@@ -3535,7 +3535,7 @@ const KanbanBoard = ({ projecten }) => {
               <span>{kolom.label}</span>
               <span className="text-xs bg-white px-2 py-0.5 rounded-full">{kolom.orders.length}</span>
             </div>
-            <div className="space-y-2">
+            <div className={`gap-2 ${kolom.orders.length > 6 ? 'grid grid-cols-2' : 'grid grid-cols-1'}`}>
               {kolom.orders.map(order => {
                 const statusCfg = orderStatusConfig[order.status] || orderStatusConfig.prijsvraag
                 return (
@@ -3550,13 +3550,13 @@ const KanbanBoard = ({ projecten }) => {
                     } ${draggedOrder?.id === order.id ? 'opacity-40' : ''}`}
                   >
                     <div className="flex justify-between items-start mb-1">
-                      <div className="font-medium text-gray-800 flex items-center gap-1">
+                      <div className="font-medium text-gray-800 flex items-center gap-1 text-xs leading-tight">
                         {order.dringend && <span className="text-red-500">🚨</span>}
-                        {order.is_meerwerk && <span className="text-amber-500 text-xs">+</span>}
+                        {order.is_meerwerk && <span className="text-amber-500">+</span>}
                         {order.naam}
                       </div>
                     </div>
-                    <div className="text-xs text-gray-500 mb-1.5">{order.project?.emoji} {order.project?.naam}</div>
+                    <div className="text-[11px] text-gray-500 mb-1">{order.project?.emoji} {order.project?.naam}</div>
                     <div className="flex items-center gap-1 flex-wrap">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusCfg.kleur}`}>{statusCfg.label}</span>
                       {kolom.id === 'voorbereiding' && (
