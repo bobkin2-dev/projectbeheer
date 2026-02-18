@@ -3535,44 +3535,68 @@ const KanbanBoard = ({ projecten }) => {
               <span>{kolom.label}</span>
               <span className="text-xs bg-white px-2 py-0.5 rounded-full">{kolom.orders.length}</span>
             </div>
-            <div className={`gap-2 ${kolom.orders.length > 6 ? 'grid grid-cols-2' : 'grid grid-cols-1'}`}>
-              {kolom.orders.map(order => {
-                const statusCfg = orderStatusConfig[order.status] || orderStatusConfig.prijsvraag
-                return (
-                  <div
-                    key={order.id}
-                    draggable
-                    onDragStart={(e) => handleDragStart(e, order)}
-                    onDragEnd={handleDragEnd}
-                    onClick={() => setSelectedOrder(order)}
-                    className={`rounded-lg border-2 p-2.5 text-sm shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${
-                      order.dringend ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'
-                    } ${draggedOrder?.id === order.id ? 'opacity-40' : ''}`}
-                  >
-                    <div className="flex justify-between items-start mb-1">
-                      <div className="font-medium text-gray-800 flex items-center gap-1 text-xs leading-tight">
-                        {order.dringend && <span className="text-red-500">🚨</span>}
-                        {order.is_meerwerk && <span className="text-amber-500">+</span>}
-                        {order.naam}
+            <div className="space-y-3">
+              {(() => {
+                // Groepeer orders per project
+                const perProject = {}
+                kolom.orders.forEach(order => {
+                  const pId = order.project_id || 'geen'
+                  if (!perProject[pId]) perProject[pId] = { project: order.project, orders: [] }
+                  perProject[pId].orders.push(order)
+                })
+                return Object.values(perProject).map(groep => (
+                  <div key={groep.project?.id || 'geen'}>
+                    {Object.keys(perProject).length > 1 && (
+                      <div className="text-[11px] font-semibold text-gray-500 mb-1.5 flex items-center gap-1" style={{ color: groep.project?.kleur || undefined }}>
+                        {groep.project?.emoji || '📁'} {groep.project?.naam || 'Geen project'}
+                        <span className="text-[10px] font-normal text-gray-400">({groep.orders.length})</span>
                       </div>
-                    </div>
-                    <div className="text-[11px] text-gray-500 mb-1">{order.project?.emoji} {order.project?.naam}</div>
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusCfg.kleur}`}>{statusCfg.label}</span>
-                      {kolom.id === 'voorbereiding' && (
-                        <>
-                          <span className={`text-[10px] px-1 py-0.5 rounded ${order.tekening_goedgekeurd ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                            📐{order.tekening_goedgekeurd ? '✓' : ''}
-                          </span>
-                          <span className={`text-[10px] px-1 py-0.5 rounded ${order.materiaal_binnen ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
-                            📦{order.materiaal_binnen ? '✓' : ''}
-                          </span>
-                        </>
-                      )}
+                    )}
+                    <div className={`gap-2 ${groep.orders.length > 6 ? 'grid grid-cols-2' : 'grid grid-cols-1'}`}>
+                      {groep.orders.map(order => {
+                        const statusCfg = orderStatusConfig[order.status] || orderStatusConfig.prijsvraag
+                        return (
+                          <div
+                            key={order.id}
+                            draggable
+                            onDragStart={(e) => handleDragStart(e, order)}
+                            onDragEnd={handleDragEnd}
+                            onClick={() => setSelectedOrder(order)}
+                            className={`rounded-lg border-2 p-2.5 text-sm shadow-sm cursor-grab active:cursor-grabbing hover:shadow-md transition-all ${
+                              order.dringend ? 'bg-red-50 border-red-300' : 'bg-white border-gray-200'
+                            } ${draggedOrder?.id === order.id ? 'opacity-40' : ''}`}
+                            style={groep.project?.kleur ? { borderLeftColor: groep.project.kleur, borderLeftWidth: '3px' } : {}}
+                          >
+                            <div className="flex justify-between items-start mb-1">
+                              <div className="font-medium text-gray-800 flex items-center gap-1 text-xs leading-tight">
+                                {order.dringend && <span className="text-red-500">🚨</span>}
+                                {order.is_meerwerk && <span className="text-amber-500">+</span>}
+                                {order.naam}
+                              </div>
+                            </div>
+                            {Object.keys(perProject).length <= 1 && (
+                              <div className="text-[11px] text-gray-500 mb-1">{order.project?.emoji} {order.project?.naam}</div>
+                            )}
+                            <div className="flex items-center gap-1 flex-wrap">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded ${statusCfg.kleur}`}>{statusCfg.label}</span>
+                              {kolom.id === 'voorbereiding' && (
+                                <>
+                                  <span className={`text-[10px] px-1 py-0.5 rounded ${order.tekening_goedgekeurd ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                    📐{order.tekening_goedgekeurd ? '✓' : ''}
+                                  </span>
+                                  <span className={`text-[10px] px-1 py-0.5 rounded ${order.materiaal_binnen ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                                    📦{order.materiaal_binnen ? '✓' : ''}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
-                )
-              })}
+                ))
+              })()}
             </div>
           </div>
         ))}
