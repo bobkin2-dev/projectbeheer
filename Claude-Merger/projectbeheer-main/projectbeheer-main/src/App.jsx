@@ -3446,6 +3446,29 @@ const KanbanBoard = ({ projecten }) => {
     setAllOrders(allOrders.map(o => o.id === updatedOrder.id ? { ...updatedOrder, project: o.project } : o))
   }
 
+  // Toggle een enkel veld op een order (tekening_klaar, tekening_goedgekeurd, materiaal_besteld, materiaal_binnen)
+  const toggleOrderField = async (e, order, field) => {
+    e.stopPropagation()
+    const newVal = !order[field]
+    try {
+      await supabase.from('orders').update({ [field]: newVal }).eq('id', order.id)
+      setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, [field]: newVal } : o))
+    } catch (err) {
+      alert('Fout: ' + err.message)
+    }
+  }
+
+  // Bulk update een veld voor meerdere orders tegelijk
+  const bulkUpdateField = async (e, orderIds, field, value) => {
+    e.stopPropagation()
+    try {
+      await supabase.from('orders').update({ [field]: value }).in('id', orderIds)
+      setAllOrders(prev => prev.map(o => orderIds.includes(o.id) ? { ...o, [field]: value } : o))
+    } catch (err) {
+      alert('Fout: ' + err.message)
+    }
+  }
+
   // Map kanban column to default status when dropping
   const getDropStatus = (targetKolom) => {
     switch (targetKolom) {
@@ -3567,6 +3590,53 @@ const KanbanBoard = ({ projecten }) => {
                         <span className="text-[10px] font-normal text-gray-400">({groep.orders.length})</span>
                       </div>
                     )}
+                    {!isCollapsed && kolom.id === 'voorbereiding' && groep.orders.length > 1 && (
+                      <div className="flex flex-wrap gap-1 mb-2 ml-0.5">
+                        {(() => {
+                          const ids = groep.orders.map(o => o.id)
+                          const allTekOk = groep.orders.every(o => o.tekening_goedgekeurd)
+                          const allMatBesteld = groep.orders.every(o => o.materiaal_besteld)
+                          const allMatBinnen = groep.orders.every(o => o.materiaal_binnen)
+                          return (
+                            <>
+                              <button
+                                onClick={(e) => bulkUpdateField(e, ids, 'tekening_goedgekeurd', !allTekOk)}
+                                className={`text-[9px] px-2 py-1 rounded border transition-colors ${
+                                  allTekOk
+                                    ? 'bg-green-100 text-green-700 border-green-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300'
+                                    : 'bg-white text-gray-500 border-gray-300 hover:bg-green-50 hover:text-green-700 hover:border-green-400'
+                                }`}
+                                title={allTekOk ? 'Alle tekeningen ongedaan maken' : 'Alle tekeningen goedkeuren'}
+                              >
+                                📐 Alle tek {allTekOk ? '✓' : '→ ✓'}
+                              </button>
+                              <button
+                                onClick={(e) => bulkUpdateField(e, ids, 'materiaal_besteld', !allMatBesteld)}
+                                className={`text-[9px] px-2 py-1 rounded border transition-colors ${
+                                  allMatBesteld
+                                    ? 'bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300'
+                                    : 'bg-white text-gray-500 border-gray-300 hover:bg-yellow-50 hover:text-yellow-700 hover:border-yellow-400'
+                                }`}
+                                title={allMatBesteld ? 'Alle bestellingen ongedaan maken' : 'Alle materialen als besteld markeren'}
+                              >
+                                🛒 Alle besteld {allMatBesteld ? '✓' : '→ ✓'}
+                              </button>
+                              <button
+                                onClick={(e) => bulkUpdateField(e, ids, 'materiaal_binnen', !allMatBinnen)}
+                                className={`text-[9px] px-2 py-1 rounded border transition-colors ${
+                                  allMatBinnen
+                                    ? 'bg-green-100 text-green-700 border-green-300 hover:bg-red-50 hover:text-red-600 hover:border-red-300'
+                                    : 'bg-white text-gray-500 border-gray-300 hover:bg-green-50 hover:text-green-700 hover:border-green-400'
+                                }`}
+                                title={allMatBinnen ? 'Alle materiaal-binnen ongedaan maken' : 'Alle materialen als binnen markeren'}
+                              >
+                                📦 Alle binnen {allMatBinnen ? '✓' : '→ ✓'}
+                              </button>
+                            </>
+                          )
+                        })()}
+                      </div>
+                    )}
                     {!isCollapsed && (
                     <div className="space-y-2">
                       {groep.orders.map(order => {
@@ -3595,13 +3665,40 @@ const KanbanBoard = ({ projecten }) => {
                               <div className="text-[10px] text-gray-400 mt-0.5 truncate">{order.project?.emoji} {order.project?.naam}</div>
                             )}
                             {kolom.id === 'voorbereiding' && (
-                              <div className="flex items-center gap-1.5 mt-1">
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded flex items-center gap-0.5 ${order.tekening_goedgekeurd ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
-                                  📐 Tekening{order.tekening_goedgekeurd ? ' ✓' : ''}
-                                </span>
-                                <span className={`text-[9px] px-1.5 py-0.5 rounded flex items-center gap-0.5 ${order.materiaal_binnen ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-400'}`}>
-                                  📦 Materiaal{order.materiaal_binnen ? ' ✓' : ''}
-                                </span>
+                              <div className="flex items-center gap-1 mt-1 flex-wrap">
+                                <button
+                                  onClick={(e) => toggleOrderField(e, order, 'tekening_goedgekeurd')}
+                                  className={`text-[9px] px-1.5 py-0.5 rounded flex items-center gap-0.5 transition-colors cursor-pointer border ${
+                                    order.tekening_goedgekeurd
+                                      ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200'
+                                      : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300'
+                                  }`}
+                                  title={order.tekening_goedgekeurd ? 'Tekening: goedgekeurd (klik om ongedaan te maken)' : 'Klik om tekening als goedgekeurd te markeren'}
+                                >
+                                  📐 Tek{order.tekening_goedgekeurd ? ' ✓' : ''}
+                                </button>
+                                <button
+                                  onClick={(e) => toggleOrderField(e, order, 'materiaal_besteld')}
+                                  className={`text-[9px] px-1.5 py-0.5 rounded flex items-center gap-0.5 transition-colors cursor-pointer border ${
+                                    order.materiaal_besteld
+                                      ? 'bg-yellow-100 text-yellow-700 border-yellow-300 hover:bg-yellow-200'
+                                      : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-yellow-50 hover:text-yellow-600 hover:border-yellow-300'
+                                  }`}
+                                  title={order.materiaal_besteld ? 'Materiaal besteld (klik om ongedaan te maken)' : 'Klik om materiaal als besteld te markeren'}
+                                >
+                                  🛒{order.materiaal_besteld ? ' ✓' : ''}
+                                </button>
+                                <button
+                                  onClick={(e) => toggleOrderField(e, order, 'materiaal_binnen')}
+                                  className={`text-[9px] px-1.5 py-0.5 rounded flex items-center gap-0.5 transition-colors cursor-pointer border ${
+                                    order.materiaal_binnen
+                                      ? 'bg-green-100 text-green-700 border-green-300 hover:bg-green-200'
+                                      : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-300'
+                                  }`}
+                                  title={order.materiaal_binnen ? 'Materiaal binnen (klik om ongedaan te maken)' : 'Klik om materiaal als binnen te markeren'}
+                                >
+                                  📦{order.materiaal_binnen ? ' ✓' : ''}
+                                </button>
                               </div>
                             )}
                             {order.begrote_uren > 0 && (
