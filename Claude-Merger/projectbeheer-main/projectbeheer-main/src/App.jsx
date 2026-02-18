@@ -2280,7 +2280,7 @@ const MedewerkerBeheer = ({ medewerkers, onRefresh }) => {
 // TIJDSREGISTRATIE
 // =====================================================
 const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
-  const [activeTab, setActiveTab] = useState('invoer') // 'invoer' of 'overzicht'
+  const [activeTab, setActiveTab] = useState('invoer') // 'invoer', 'overzicht', 'nacalculatie'
   const [datum, setDatum] = useState(new Date().toISOString().split('T')[0])
   const [selectedMedewerker, setSelectedMedewerker] = useState(null)
   const [regels, setRegels] = useState([])
@@ -2296,6 +2296,11 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
   const [overzichtOrder, setOverzichtOrder] = useState('')
   const [overzichtData, setOverzichtData] = useState([])
   const [overzichtLoading, setOverzichtLoading] = useState(false)
+  // Nacalculatie state
+  const [nacalcProject, setNacalcProject] = useState('')
+  const [nacalcOrders, setNacalcOrders] = useState([])
+  const [nacalcLoading, setNacalcLoading] = useState(false)
+  const [nacalcFilter, setNacalcFilter] = useState('alle') // 'alle', 'open', 'klaar'
 
   // Load all orders
   useEffect(() => {
@@ -2460,6 +2465,55 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
     }
   }, [overzichtProject, overzichtOrder, activeTab])
 
+  // Nacalculatie: load orders per project with uren count
+  const loadNacalculatie = async (projectId) => {
+    if (!projectId) return
+    setNacalcLoading(true)
+    try {
+      const { data: orders } = await supabase.from('orders').select('*').eq('project_id', projectId)
+      // For each order, get total uren and producten count
+      const ordersMetData = await Promise.all((orders || []).map(async (order) => {
+        const { data: urenData } = await supabase.from('uren_registratie').select('uren').eq('order_id', order.id)
+        const { data: productenData } = await supabase.from('order_producten').select('id').eq('order_id', order.id)
+        const totaalUren = (urenData || []).reduce((sum, r) => sum + r.uren, 0)
+        return {
+          ...order,
+          totaal_uren: totaalUren,
+          aantal_registraties: (urenData || []).length,
+          aantal_producten: (productenData || []).length
+        }
+      }))
+      setNacalcOrders(ordersMetData)
+    } catch (e) {
+      console.error('Fout:', e)
+    }
+    setNacalcLoading(false)
+  }
+
+  useEffect(() => {
+    if (activeTab === 'nacalculatie' && nacalcProject) {
+      loadNacalculatie(nacalcProject)
+    }
+  }, [nacalcProject, activeTab])
+
+  const toggleNacalcStatus = async (orderId, field) => {
+    const order = nacalcOrders.find(o => o.id === orderId)
+    if (!order) return
+    const newValue = !order[field]
+    try {
+      await supabase.from('orders').update({ [field]: newValue }).eq('id', orderId)
+      setNacalcOrders(nacalcOrders.map(o => o.id === orderId ? { ...o, [field]: newValue } : o))
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+  }
+
+  const nacalcGefilterdeOrders = nacalcOrders.filter(o => {
+    if (nacalcFilter === 'open') return !o.nacalculatie_klaar
+    if (nacalcFilter === 'klaar') return o.nacalculatie_klaar
+    return true
+  })
+
   // Group overzicht data
   const overzichtPerMedewerker = {}
   const overzichtPerTypeWerk = {}
@@ -2504,6 +2558,12 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
           className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'overzicht' ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'}`}
         >
           📊 Overzicht
+        </button>
+        <button
+          onClick={() => setActiveTab('nacalculatie')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'nacalculatie' ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'}`}
+        >
+          ✅ Nacalculatie
         </button>
       </div>
 
@@ -2804,6 +2864,133 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
           )}
         </div>
       )}
+
+      {activeTab === 'nacalculatie' && (
+        <div>
+          <div className="bg-white rounded-lg border p-4 mb-4">
+            <div className="flex flex-wrap gap-4 items-end">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Project</label>
+                <select
+                  value={nacalcProject}
+                  onChange={(e) => setNacalcProject(e.target.value)}
+                  className="border rounded px-3 py-2 min-w-48"
+                >
+                  <option value="">-- Kies project --</option>
+                  {projecten.map(p => (
+                    <option key={p.id} value={p.id}>{p.emoji || ''} {p.naam || p.project_nummer}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Filter</label>
+                <div className="flex gap-1">
+                  {[
+                    { id: 'alle', label: 'Alle' },
+                    { id: 'open', label: 'Open' },
+                    { id: 'klaar', label: 'Afgevinkt' }
+                  ].map(f => (
+                    <button
+                      key={f.id}
+                      onClick={() => setNacalcFilter(f.id)}
+                      className={`px-3 py-2 text-sm rounded ${nacalcFilter === f.id ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'}`}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {nacalcLoading && <LoadingSpinner />}
+
+          {!nacalcLoading && nacalcProject && nacalcGefilterdeOrders.length > 0 && (
+            <div className="space-y-2">
+              {/* Samenvatting bovenaan */}
+              <div className="grid grid-cols-3 gap-4 mb-4">
+                <div className="bg-white rounded-lg border p-4 text-center">
+                  <div className="text-2xl font-bold text-blue-600">{nacalcOrders.length}</div>
+                  <div className="text-xs text-gray-500">Totaal orders</div>
+                </div>
+                <div className="bg-white rounded-lg border p-4 text-center">
+                  <div className="text-2xl font-bold text-orange-600">{nacalcOrders.filter(o => o.uren_compleet && !o.nacalculatie_klaar).length}</div>
+                  <div className="text-xs text-gray-500">Uren compleet, nog nacalculeren</div>
+                </div>
+                <div className="bg-white rounded-lg border p-4 text-center">
+                  <div className="text-2xl font-bold text-green-600">{nacalcOrders.filter(o => o.nacalculatie_klaar).length}</div>
+                  <div className="text-xs text-gray-500">Nagecalculeerd</div>
+                </div>
+              </div>
+
+              {/* Orders lijst */}
+              <div className="bg-white rounded-lg border overflow-hidden">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 text-left text-xs text-gray-500">
+                      <th className="px-4 py-3">Order</th>
+                      <th className="px-4 py-3 text-right">Uren</th>
+                      <th className="px-4 py-3 text-right">Registraties</th>
+                      <th className="px-4 py-3 text-right">Producten</th>
+                      <th className="px-4 py-3 text-center">Uren compleet</th>
+                      <th className="px-4 py-3 text-center">Nagecalculeerd</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {nacalcGefilterdeOrders.map(order => (
+                      <tr key={order.id} className={`hover:bg-gray-50 ${order.nacalculatie_klaar ? 'bg-green-50' : order.uren_compleet ? 'bg-yellow-50' : ''}`}>
+                        <td className="px-4 py-3">
+                          <div className="font-medium text-sm">{order.naam || 'Naamloos'}</div>
+                          {order.totaal_uren === 0 && <span className="text-xs text-red-400">Geen uren geregistreerd</span>}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium text-sm">{order.totaal_uren}u</td>
+                        <td className="px-4 py-3 text-right text-sm text-gray-600">{order.aantal_registraties}</td>
+                        <td className="px-4 py-3 text-right text-sm text-gray-600">{order.aantal_producten}</td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => toggleNacalcStatus(order.id, 'uren_compleet')}
+                            className={`w-7 h-7 rounded border-2 flex items-center justify-center text-sm transition-colors ${
+                              order.uren_compleet
+                                ? 'bg-orange-500 border-orange-500 text-white'
+                                : 'border-gray-300 hover:border-orange-400'
+                            }`}
+                          >
+                            {order.uren_compleet ? '✓' : ''}
+                          </button>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <button
+                            onClick={() => toggleNacalcStatus(order.id, 'nacalculatie_klaar')}
+                            className={`w-7 h-7 rounded border-2 flex items-center justify-center text-sm transition-colors ${
+                              order.nacalculatie_klaar
+                                ? 'bg-green-500 border-green-500 text-white'
+                                : 'border-gray-300 hover:border-green-400'
+                            }`}
+                          >
+                            {order.nacalculatie_klaar ? '✓' : ''}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {!nacalcLoading && nacalcProject && nacalcGefilterdeOrders.length === 0 && (
+            <div className="text-center py-12 text-gray-400 bg-white rounded-lg border">
+              {nacalcFilter !== 'alle' ? 'Geen orders gevonden met deze filter' : 'Geen orders gevonden voor dit project'}
+            </div>
+          )}
+
+          {!nacalcProject && (
+            <div className="text-center py-12 text-gray-400 bg-white rounded-lg border">
+              Selecteer een project om de nacalculatie te beheren
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -2825,7 +3012,9 @@ const KanbanOrderModal = ({ order, onClose, onUpdate }) => {
         productie_status: formData.productie_status,
         plaatsing_status: formData.plaatsing_status,
         plaatsing_datum: formData.plaatsing_datum,
-        dringend: formData.dringend || false
+        dringend: formData.dringend || false,
+        uren_compleet: formData.uren_compleet || false,
+        nacalculatie_klaar: formData.nacalculatie_klaar || false
       }).eq('id', order.id)
       onUpdate({ ...order, ...formData })
       onClose()
@@ -2932,6 +3121,32 @@ const KanbanOrderModal = ({ order, onClose, onUpdate }) => {
               className="w-4 h-4 text-red-600 rounded"
             />
             <label htmlFor="dringend" className="text-sm font-medium text-red-600">🚨 Dringend</label>
+          </div>
+
+          <div className="border-t pt-3 mt-3">
+            <div className="text-sm font-medium text-gray-700 mb-2">Nacalculatie</div>
+            <div className="flex gap-4">
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="uren_compleet"
+                  checked={formData.uren_compleet || false}
+                  onChange={(e) => setFormData({ ...formData, uren_compleet: e.target.checked })}
+                  className="w-4 h-4 text-orange-600 rounded"
+                />
+                <label htmlFor="uren_compleet" className="text-sm text-gray-700">Uren compleet</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  id="nacalculatie_klaar"
+                  checked={formData.nacalculatie_klaar || false}
+                  onChange={(e) => setFormData({ ...formData, nacalculatie_klaar: e.target.checked })}
+                  className="w-4 h-4 text-green-600 rounded"
+                />
+                <label htmlFor="nacalculatie_klaar" className="text-sm text-gray-700">Nagecalculeerd</label>
+              </div>
+            </div>
           </div>
         </div>
 

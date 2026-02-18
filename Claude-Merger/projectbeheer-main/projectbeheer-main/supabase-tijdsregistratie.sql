@@ -41,3 +41,8 @@ ALTER TABLE order_producten ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all for medewerkers" ON medewerkers FOR ALL USING (true);
 CREATE POLICY "Allow all for uren_registratie" ON uren_registratie FOR ALL USING (true);
 CREATE POLICY "Allow all for order_producten" ON order_producten FOR ALL USING (true);
+
+-- Nacalculatie kolommen op orders tabel
+-- VOER DIT UIT IN SUPABASE SQL EDITOR:
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS uren_compleet BOOLEAN DEFAULT false;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS nacalculatie_klaar BOOLEAN DEFAULT false;
