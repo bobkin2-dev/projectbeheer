@@ -2057,6 +2057,7 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, medewerkers = [], onBa
                   onToggle={() => setExpandedProductieUren({ ...expandedProductieUren, [order.id]: !expandedProductieUren[order.id] })}
                   medewerkers={medewerkers.map(m => m.naam || m)}
                 />
+                <SnelUrenInvoer orderId={order.id} projectId={project.id} medewerkers={medewerkers} />
                 <OrderProducten orderId={order.id} />
               </div>
             ))}
@@ -2110,6 +2111,73 @@ const ProjectCard = ({ project, onClick }) => (
     <div className="text-sm text-gray-600">👤 {project.klant || '-'}</div>
   </div>
 )
+
+// =====================================================
+// SNEL UREN INVOER (vanuit project)
+// =====================================================
+const SnelUrenInvoer = ({ orderId, projectId, medewerkers = [] }) => {
+  const [open, setOpen] = useState(false)
+  const [medewerker, setMedewerker] = useState('')
+  const [uren, setUren] = useState('')
+  const [typeWerk, setTypeWerk] = useState('onderdelen')
+  const [saving, setSaving] = useState(false)
+  const [recentToegevoegd, setRecentToegevoegd] = useState(null)
+
+  const handleAdd = async () => {
+    if (!medewerker || !uren || parseFloat(uren) <= 0) return
+    setSaving(true)
+    try {
+      await supabase.from('uren_registratie').insert({
+        medewerker_id: medewerker,
+        datum: new Date().toISOString().split('T')[0],
+        project_id: projectId,
+        order_id: orderId,
+        type_werk: typeWerk,
+        uren: parseFloat(uren)
+      })
+      const mNaam = medewerkers.find(m => m.id === medewerker)?.naam || '?'
+      setRecentToegevoegd(`${mNaam}: ${uren}u (${typeWerk})`)
+      setUren('')
+      setTimeout(() => setRecentToegevoegd(null), 3000)
+    } catch (e) {
+      alert('Fout: ' + e.message)
+    }
+    setSaving(false)
+  }
+
+  return (
+    <div className="mt-2">
+      <button onClick={() => setOpen(!open)} className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1">
+        {open ? '▲ Verberg snelle uren' : '⚡ Snel uren toevoegen'}
+      </button>
+      {recentToegevoegd && (
+        <div className="mt-1 text-xs text-green-600 bg-green-50 px-2 py-1 rounded animate-pulse">
+          ✓ Toegevoegd: {recentToegevoegd}
+        </div>
+      )}
+      {open && (
+        <div className="mt-2 bg-blue-50 rounded-lg p-3 border border-blue-200">
+          <div className="flex flex-wrap gap-2 items-center">
+            <select value={medewerker} onChange={(e) => setMedewerker(e.target.value)} className="border rounded-lg px-2 py-1.5 text-sm">
+              <option value="">Medewerker...</option>
+              {medewerkers.map(m => <option key={m.id} value={m.id}>{m.naam}</option>)}
+            </select>
+            <input type="number" value={uren} onChange={(e) => setUren(e.target.value)} placeholder="Uren" step="0.5" min="0" className="w-20 border rounded-lg px-2 py-1.5 text-sm text-right" />
+            <div className="flex gap-1">
+              {typeWerkOpties.map(tw => (
+                <button key={tw} onClick={() => setTypeWerk(tw)} className={`px-2 py-1 text-xs rounded-md ${typeWerk === tw ? 'bg-blue-600 text-white' : 'bg-white border'}`}>{tw}</button>
+              ))}
+            </div>
+            <button onClick={handleAdd} disabled={saving} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50 font-medium">
+              {saving ? '...' : '+ Registreer'}
+            </button>
+          </div>
+          <p className="text-[10px] text-blue-500 mt-1">Registreert voor vandaag ({new Date().toLocaleDateString('nl-BE')})</p>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // =====================================================
 // ORDER PRODUCTEN COMPONENT
@@ -2291,6 +2359,9 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
   const [aanmakenProject, setAanmakenProject] = useState(null) // regelIndex
   const [nieuwOrderNaam, setNieuwOrderNaam] = useState('')
   const [aanmakenOrder, setAanmakenOrder] = useState(null) // regelIndex
+  // Calendar state
+  const [calendarMonth, setCalendarMonth] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })
+  const [dagenMetUren, setDagenMetUren] = useState({}) // { '2026-02-18': 6.5, ... }
   // Overzicht state
   const [overzichtProject, setOverzichtProject] = useState('')
   const [overzichtOrder, setOverzichtOrder] = useState('')
@@ -2310,6 +2381,27 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
     }
     load()
   }, [projecten])
+
+  // Load calendar data: which days have uren for selected medewerker
+  useEffect(() => {
+    if (!selectedMedewerker) return
+    const loadCalendar = async () => {
+      const [year, month] = calendarMonth.split('-').map(Number)
+      const startDatum = `${year}-${String(month).padStart(2, '0')}-01`
+      const endDatum = `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`
+      const { data } = await supabase.from('uren_registratie')
+        .select('datum, uren')
+        .eq('medewerker_id', selectedMedewerker.id)
+        .gte('datum', startDatum)
+        .lte('datum', endDatum)
+      const perDag = {}
+      ;(data || []).forEach(r => {
+        perDag[r.datum] = (perDag[r.datum] || 0) + r.uren
+      })
+      setDagenMetUren(perDag)
+    }
+    loadCalendar()
+  }, [selectedMedewerker, calendarMonth, regels])
 
   // Load existing registrations when medewerker or datum changes
   useEffect(() => {
@@ -2396,6 +2488,29 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
       alert('Fout bij opslaan: ' + e.message)
     }
     setSaving(false)
+  }
+
+  const kopieerVorigeDag = async () => {
+    if (!selectedMedewerker) return
+    const vorigeDag = new Date(datum)
+    vorigeDag.setDate(vorigeDag.getDate() - 1)
+    const vorigeDatum = vorigeDag.toISOString().split('T')[0]
+    const { data } = await supabase.from('uren_registratie')
+      .select('*')
+      .eq('medewerker_id', selectedMedewerker.id)
+      .eq('datum', vorigeDatum)
+    if (!data || data.length === 0) {
+      alert('Geen uren gevonden voor ' + vorigeDag.toLocaleDateString('nl-BE', { weekday: 'long', day: 'numeric', month: 'long' }))
+      return
+    }
+    setRegels(data.map(r => ({
+      uren: r.uren,
+      project_id: r.project_id,
+      order_id: r.order_id,
+      type_werk: r.type_werk || 'onderdelen',
+      notitie: r.notitie || '',
+      saved: false
+    })))
   }
 
   const createInlineProject = async (regelIndex) => {
@@ -2508,7 +2623,10 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
     }
   }
 
-  const nacalcGefilterdeOrders = nacalcOrders.filter(o => {
+  // Only show orders that actually have hour registrations
+  const nacalcOrdersMetUren = nacalcOrders.filter(o => o.aantal_registraties > 0)
+
+  const nacalcGefilterdeOrders = nacalcOrdersMetUren.filter(o => {
     if (nacalcFilter === 'open') return !o.nacalculatie_klaar
     if (nacalcFilter === 'klaar') return o.nacalculatie_klaar
     return true
@@ -2532,13 +2650,48 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
     overzichtPerDatum[r.datum].push(r)
   })
 
+  // Calendar helper
+  const calendarDays = (() => {
+    const [year, month] = calendarMonth.split('-').map(Number)
+    const firstDay = new Date(year, month - 1, 1)
+    const lastDay = new Date(year, month, 0)
+    const startPad = (firstDay.getDay() + 6) % 7 // Monday=0
+    const days = []
+    for (let i = 0; i < startPad; i++) days.push(null)
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+      days.push({ day: d, date: dateStr, uren: dagenMetUren[dateStr] || 0 })
+    }
+    return days
+  })()
+
+  const calendarMonthLabel = (() => {
+    const [year, month] = calendarMonth.split('-').map(Number)
+    return new Date(year, month - 1).toLocaleDateString('nl-BE', { month: 'long', year: 'numeric' })
+  })()
+
+  const prevMonth = () => {
+    const [y, m] = calendarMonth.split('-').map(Number)
+    const d = new Date(y, m - 2, 1)
+    setCalendarMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+
+  const nextMonth = () => {
+    const [y, m] = calendarMonth.split('-').map(Number)
+    const d = new Date(y, m, 1)
+    setCalendarMonth(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
+  }
+
   return (
     <div>
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-lg font-semibold">⏱️ Tijdsregistratie</h2>
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-800">⏱️ Tijdsregistratie</h2>
+          <p className="text-sm text-gray-500 mt-1">Registreer en beheer werkuren per medewerker</p>
+        </div>
         <button
           onClick={() => setShowBeheer(!showBeheer)}
-          className="px-3 py-1.5 bg-gray-100 rounded text-sm hover:bg-gray-200"
+          className="px-4 py-2 bg-gray-100 rounded-lg text-sm hover:bg-gray-200 transition-colors flex items-center gap-2"
         >
           👷 Medewerkers beheren
         </button>
@@ -2546,49 +2699,48 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
 
       {showBeheer && <MedewerkerBeheer medewerkers={medewerkers} onRefresh={onRefresh} />}
 
-      <div className="flex gap-2 mb-4">
-        <button
-          onClick={() => setActiveTab('invoer')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'invoer' ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'}`}
-        >
-          ✏️ Invoer
-        </button>
-        <button
-          onClick={() => setActiveTab('overzicht')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'overzicht' ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'}`}
-        >
-          📊 Overzicht
-        </button>
-        <button
-          onClick={() => setActiveTab('nacalculatie')}
-          className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'nacalculatie' ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'}`}
-        >
-          ✅ Nacalculatie
-        </button>
+      <div className="flex gap-1 mb-6 bg-gray-100 p-1 rounded-xl">
+        {[
+          { id: 'invoer', icon: '✏️', label: 'Invoer' },
+          { id: 'overzicht', icon: '📊', label: 'Overzicht' },
+          { id: 'nacalculatie', icon: '✅', label: 'Nacalculatie' }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
+              activeTab === tab.id
+                ? 'bg-white text-blue-700 shadow-sm'
+                : 'text-gray-600 hover:text-gray-800'
+            }`}
+          >
+            {tab.icon} {tab.label}
+          </button>
+        ))}
       </div>
 
       {activeTab === 'invoer' && (
       <>
-      <div className="bg-white rounded-lg border p-4 mb-4">
-        <div className="flex flex-wrap gap-4 mb-4">
+      <div className="bg-white rounded-xl border shadow-sm p-5 mb-4">
+        <div className="flex flex-wrap gap-4 items-end mb-4">
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Datum</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">Datum</label>
             <input
               type="date"
               value={datum}
               onChange={(e) => setDatum(e.target.value)}
-              className="border rounded px-3 py-2"
+              className="border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Medewerker</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5">Medewerker</label>
             <select
               value={selectedMedewerker?.id || ''}
               onChange={(e) => {
                 const m = medewerkers.find(m => m.id === e.target.value)
                 setSelectedMedewerker(m || null)
               }}
-              className="border rounded px-3 py-2 min-w-48"
+              className="border rounded-lg px-3 py-2.5 text-sm min-w-48 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
             >
               <option value="">-- Kies medewerker --</option>
               {medewerkers.map(m => (
@@ -2596,145 +2748,162 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
               ))}
             </select>
           </div>
+          {selectedMedewerker && (
+            <button
+              onClick={kopieerVorigeDag}
+              className="px-4 py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-sm hover:bg-amber-100 transition-colors"
+              title="Kopieer de uren van gisteren als template"
+            >
+              📋 Kopieer gisteren
+            </button>
+          )}
         </div>
       </div>
 
       {selectedMedewerker && (
-        <div className="bg-white rounded-lg border p-4">
+        <div className="bg-white rounded-xl border shadow-sm p-5 mb-4">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="font-medium">Uren voor {selectedMedewerker.naam} — {new Date(datum).toLocaleDateString('nl-BE', { weekday: 'long', day: 'numeric', month: 'long' })}</h3>
-            <div className="text-lg font-semibold text-blue-600">Totaal: {totaalUren}u</div>
+            <div>
+              <h3 className="font-semibold text-gray-800">{selectedMedewerker.naam}</h3>
+              <p className="text-sm text-gray-500">{new Date(datum).toLocaleDateString('nl-BE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <div className="text-2xl font-bold text-blue-600">{totaalUren}u</div>
+                <div className="text-xs text-gray-400">totaal</div>
+              </div>
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${
+                totaalUren >= 8 ? 'bg-green-100 text-green-600' : totaalUren > 0 ? 'bg-amber-100 text-amber-600' : 'bg-gray-100 text-gray-400'
+              }`}>
+                {totaalUren >= 8 ? '✓' : totaalUren > 0 ? '◔' : '○'}
+              </div>
+            </div>
           </div>
 
           <div className="space-y-3">
             {regels.map((regel, index) => (
-              <div key={index} className={`p-3 rounded-lg border ${regel.saved ? 'bg-green-50 border-green-200' : 'bg-gray-50'}`}>
+              <div key={index} className={`p-3 rounded-xl border-2 transition-colors ${
+                regel.saved ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+              }`}>
                 <div className="flex flex-wrap gap-2 items-center">
-                  {/* Uren */}
-                  <input
-                    type="number"
-                    value={regel.uren}
-                    onChange={(e) => updateRegel(index, 'uren', e.target.value)}
-                    placeholder="Uren"
-                    className="w-20 border rounded px-2 py-1.5 text-sm text-right"
-                    step="0.5"
-                    min="0"
-                  />
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={regel.uren}
+                      onChange={(e) => updateRegel(index, 'uren', e.target.value)}
+                      placeholder="0"
+                      className="w-20 border rounded-lg px-2 py-2 text-sm text-right font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      step="0.5"
+                      min="0"
+                    />
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">u</span>
+                  </div>
 
-                  {/* Project */}
                   {aanmakenProject === index ? (
                     <div className="flex gap-1 items-center">
-                      <input
-                        type="text"
-                        value={nieuwProjectNaam}
-                        onChange={(e) => setNieuwProjectNaam(e.target.value)}
-                        placeholder="Projectnaam..."
-                        className="border rounded px-2 py-1.5 text-sm w-40"
-                        autoFocus
-                        onKeyDown={(e) => e.key === 'Enter' && createInlineProject(index)}
-                      />
-                      <button onClick={() => createInlineProject(index)} className="px-2 py-1.5 bg-green-600 text-white rounded text-sm">✓</button>
-                      <button onClick={() => setAanmakenProject(null)} className="px-2 py-1.5 bg-gray-300 rounded text-sm">✕</button>
+                      <input type="text" value={nieuwProjectNaam} onChange={(e) => setNieuwProjectNaam(e.target.value)} placeholder="Projectnaam..." className="border rounded-lg px-2 py-2 text-sm w-40" autoFocus onKeyDown={(e) => e.key === 'Enter' && createInlineProject(index)} />
+                      <button onClick={() => createInlineProject(index)} className="px-2 py-2 bg-green-600 text-white rounded-lg text-sm">✓</button>
+                      <button onClick={() => setAanmakenProject(null)} className="px-2 py-2 bg-gray-300 rounded-lg text-sm">✕</button>
                     </div>
                   ) : (
-                    <select
-                      value={regel.project_id}
-                      onChange={(e) => {
-                        if (e.target.value === '__nieuw__') {
-                          setAanmakenProject(index)
-                        } else {
-                          updateRegel(index, 'project_id', e.target.value)
-                        }
-                      }}
-                      className="border rounded px-2 py-1.5 text-sm min-w-40"
-                    >
+                    <select value={regel.project_id} onChange={(e) => { if (e.target.value === '__nieuw__') { setAanmakenProject(index) } else { updateRegel(index, 'project_id', e.target.value) } }} className="border rounded-lg px-2 py-2 text-sm min-w-40 focus:ring-2 focus:ring-blue-500 outline-none">
                       <option value="">Project...</option>
-                      {projecten.map(p => (
-                        <option key={p.id} value={p.id}>{p.emoji || ''} {p.naam || p.project_nummer}</option>
-                      ))}
+                      {projecten.map(p => <option key={p.id} value={p.id}>{p.emoji || ''} {p.naam || p.project_nummer}</option>)}
                       <option value="__nieuw__">+ Nieuw project</option>
                     </select>
                   )}
 
-                  {/* Order */}
                   {aanmakenOrder === index ? (
                     <div className="flex gap-1 items-center">
-                      <input
-                        type="text"
-                        value={nieuwOrderNaam}
-                        onChange={(e) => setNieuwOrderNaam(e.target.value)}
-                        placeholder="Order naam..."
-                        className="border rounded px-2 py-1.5 text-sm w-40"
-                        autoFocus
-                        onKeyDown={(e) => e.key === 'Enter' && createInlineOrder(index)}
-                      />
-                      <button onClick={() => createInlineOrder(index)} className="px-2 py-1.5 bg-green-600 text-white rounded text-sm">✓</button>
-                      <button onClick={() => setAanmakenOrder(null)} className="px-2 py-1.5 bg-gray-300 rounded text-sm">✕</button>
+                      <input type="text" value={nieuwOrderNaam} onChange={(e) => setNieuwOrderNaam(e.target.value)} placeholder="Order naam..." className="border rounded-lg px-2 py-2 text-sm w-40" autoFocus onKeyDown={(e) => e.key === 'Enter' && createInlineOrder(index)} />
+                      <button onClick={() => createInlineOrder(index)} className="px-2 py-2 bg-green-600 text-white rounded-lg text-sm">✓</button>
+                      <button onClick={() => setAanmakenOrder(null)} className="px-2 py-2 bg-gray-300 rounded-lg text-sm">✕</button>
                     </div>
                   ) : (
-                    <select
-                      value={regel.order_id}
-                      onChange={(e) => {
-                        if (e.target.value === '__nieuw__') {
-                          setAanmakenOrder(index)
-                        } else {
-                          updateRegel(index, 'order_id', e.target.value)
-                        }
-                      }}
-                      className="border rounded px-2 py-1.5 text-sm min-w-40"
-                      disabled={!regel.project_id}
-                    >
+                    <select value={regel.order_id} onChange={(e) => { if (e.target.value === '__nieuw__') { setAanmakenOrder(index) } else { updateRegel(index, 'order_id', e.target.value) } }} className="border rounded-lg px-2 py-2 text-sm min-w-40 focus:ring-2 focus:ring-blue-500 outline-none" disabled={!regel.project_id}>
                       <option value="">Order...</option>
-                      {ordersVoorProject(regel.project_id).map(o => (
-                        <option key={o.id} value={o.id}>{o.naam}</option>
-                      ))}
+                      {ordersVoorProject(regel.project_id).map(o => <option key={o.id} value={o.id}>{o.naam}</option>)}
                       <option value="__nieuw__">+ Nieuwe order</option>
                     </select>
                   )}
 
-                  {/* Type werk */}
                   <div className="flex gap-1">
                     {typeWerkOpties.map(tw => (
-                      <button
-                        key={tw}
-                        onClick={() => updateRegel(index, 'type_werk', tw)}
-                        className={`px-2 py-1 text-xs rounded ${regel.type_werk === tw ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-100'}`}
-                      >
+                      <button key={tw} onClick={() => updateRegel(index, 'type_werk', tw)} className={`px-2.5 py-1.5 text-xs rounded-lg font-medium transition-colors ${
+                        regel.type_werk === tw
+                          ? tw === 'onderdelen' ? 'bg-blue-600 text-white' : tw === 'monteren' ? 'bg-emerald-600 text-white' : tw === 'inpakken' ? 'bg-amber-500 text-white' : 'bg-gray-600 text-white'
+                          : 'bg-white border hover:bg-gray-100'
+                      }`}>
                         {tw}
                       </button>
                     ))}
                   </div>
 
-                  {/* Verwijder */}
-                  <button onClick={() => removeRegel(index)} className="text-red-400 hover:text-red-600 ml-auto">✕</button>
+                  <button onClick={() => removeRegel(index)} className="text-red-300 hover:text-red-500 ml-auto transition-colors text-lg">✕</button>
                 </div>
 
-                {/* Producten per order */}
-                {regel.order_id && (
-                  <OrderProducten orderId={regel.order_id} />
-                )}
+                {regel.order_id && <OrderProducten orderId={regel.order_id} />}
               </div>
             ))}
           </div>
 
-          <div className="flex justify-between items-center mt-4">
-            <button onClick={addRegel} className="px-4 py-2 border rounded text-sm hover:bg-gray-50">
+          <div className="flex justify-between items-center mt-4 pt-4 border-t">
+            <button onClick={addRegel} className="px-4 py-2.5 border-2 border-dashed border-gray-300 rounded-xl text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors">
               + Regel toevoegen
             </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 font-medium"
-            >
+            <button onClick={handleSave} disabled={saving} className="px-8 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 font-semibold shadow-sm transition-colors">
               {saving ? 'Opslaan...' : '💾 Opslaan'}
             </button>
           </div>
         </div>
       )}
 
+      {/* Kalender */}
+      {selectedMedewerker && (
+        <div className="bg-white rounded-xl border shadow-sm p-5">
+          <div className="flex justify-between items-center mb-4">
+            <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">◀</button>
+            <h3 className="font-semibold text-gray-700 capitalize">{calendarMonthLabel}</h3>
+            <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">▶</button>
+          </div>
+          <div className="grid grid-cols-7 gap-1 text-center text-xs text-gray-500 mb-2">
+            {['Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za', 'Zo'].map(d => <div key={d} className="py-1 font-medium">{d}</div>)}
+          </div>
+          <div className="grid grid-cols-7 gap-1">
+            {calendarDays.map((day, i) => day ? (
+              <button
+                key={i}
+                onClick={() => setDatum(day.date)}
+                className={`p-2 rounded-lg text-sm transition-all relative ${
+                  day.date === datum
+                    ? 'bg-blue-600 text-white font-bold shadow-sm'
+                    : day.date === new Date().toISOString().split('T')[0]
+                    ? 'bg-blue-50 text-blue-700 font-medium ring-2 ring-blue-300'
+                    : 'hover:bg-gray-100'
+                }`}
+              >
+                <div>{day.day}</div>
+                {day.uren > 0 && day.date !== datum && (
+                  <div className={`text-[10px] font-medium ${day.uren >= 8 ? 'text-green-600' : 'text-amber-600'}`}>{day.uren}u</div>
+                )}
+                {day.uren > 0 && day.date === datum && (
+                  <div className="text-[10px] font-medium text-blue-200">{day.uren}u</div>
+                )}
+                {day.uren === 0 && <div className="text-[10px] text-transparent">-</div>}
+              </button>
+            ) : <div key={i} />)}
+          </div>
+          <div className="mt-3 pt-3 border-t flex justify-between text-xs text-gray-500">
+            <span>Totaal deze maand: <strong className="text-gray-700">{Object.values(dagenMetUren).reduce((s, u) => s + u, 0)}u</strong></span>
+            <span>{Object.keys(dagenMetUren).length} dagen gewerkt</span>
+          </div>
+        </div>
+      )}
+
       {!selectedMedewerker && (
-        <div className="text-center py-12 text-gray-400 bg-white rounded-lg border">
-          Selecteer een medewerker om uren in te vullen
+        <div className="text-center py-16 text-gray-400 bg-white rounded-xl border shadow-sm">
+          <div className="text-4xl mb-3">👷</div>
+          <p className="font-medium">Selecteer een medewerker om uren in te vullen</p>
         </div>
       )}
       </>
@@ -2742,14 +2911,14 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
 
       {activeTab === 'overzicht' && (
         <div>
-          <div className="bg-white rounded-lg border p-4 mb-4">
+          <div className="bg-white rounded-xl border shadow-sm p-5 mb-4">
             <div className="flex flex-wrap gap-4">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Project</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">Project</label>
                 <select
                   value={overzichtProject}
                   onChange={(e) => { setOverzichtProject(e.target.value); setOverzichtOrder('') }}
-                  className="border rounded px-3 py-2 min-w-48"
+                  className="border rounded-lg px-3 py-2.5 text-sm min-w-48 focus:ring-2 focus:ring-blue-500 outline-none"
                 >
                   <option value="">-- Kies project --</option>
                   {projecten.map(p => (
@@ -2758,11 +2927,11 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Order (optioneel)</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">Order (optioneel)</label>
                 <select
                   value={overzichtOrder}
                   onChange={(e) => setOverzichtOrder(e.target.value)}
-                  className="border rounded px-3 py-2 min-w-48"
+                  className="border rounded-lg px-3 py-2.5 text-sm min-w-48 focus:ring-2 focus:ring-blue-500 outline-none"
                   disabled={!overzichtProject}
                 >
                   <option value="">Alle orders</option>
@@ -2780,40 +2949,53 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
             <div className="space-y-4">
               {/* Samenvatting */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div className="bg-white rounded-lg border p-4">
-                  <div className="text-xs text-gray-500 mb-2">Totaal uren</div>
-                  <div className="text-3xl font-bold text-blue-600">{overzichtTotaal}u</div>
-                  <div className="text-sm text-gray-500">{overzichtData.length} registraties</div>
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-5">
+                  <div className="text-xs font-medium text-blue-600 mb-1">Totaal uren</div>
+                  <div className="text-4xl font-bold text-blue-700">{overzichtTotaal}u</div>
+                  <div className="text-sm text-blue-500 mt-1">{overzichtData.length} registraties</div>
                 </div>
 
-                <div className="bg-white rounded-lg border p-4">
-                  <div className="text-xs text-gray-500 mb-2">Per medewerker</div>
-                  <div className="space-y-1">
+                <div className="bg-white rounded-xl border shadow-sm p-5">
+                  <div className="text-xs font-medium text-gray-500 mb-3">Per medewerker</div>
+                  <div className="space-y-2">
                     {Object.entries(overzichtPerMedewerker).sort((a, b) => b[1] - a[1]).map(([naam, uren]) => (
-                      <div key={naam} className="flex justify-between text-sm">
-                        <span>{naam}</span>
-                        <span className="font-medium">{uren}u</span>
+                      <div key={naam} className="flex justify-between items-center text-sm">
+                        <span className="text-gray-700">{naam}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="w-20 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-500 rounded-full" style={{ width: `${Math.min((uren / overzichtTotaal) * 100, 100)}%` }} />
+                          </div>
+                          <span className="font-semibold text-gray-700 w-12 text-right">{uren}u</span>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
 
-                <div className="bg-white rounded-lg border p-4">
-                  <div className="text-xs text-gray-500 mb-2">Per type werk</div>
-                  <div className="space-y-1">
-                    {Object.entries(overzichtPerTypeWerk).sort((a, b) => b[1] - a[1]).map(([type, uren]) => (
-                      <div key={type} className="flex justify-between text-sm">
-                        <span>{type}</span>
-                        <span className="font-medium">{uren}u</span>
-                      </div>
-                    ))}
+                <div className="bg-white rounded-xl border shadow-sm p-5">
+                  <div className="text-xs font-medium text-gray-500 mb-3">Per type werk</div>
+                  <div className="space-y-2">
+                    {Object.entries(overzichtPerTypeWerk).sort((a, b) => b[1] - a[1]).map(([type, uren]) => {
+                      const color = type === 'onderdelen' ? 'bg-blue-500' : type === 'monteren' ? 'bg-emerald-500' : type === 'inpakken' ? 'bg-amber-500' : 'bg-gray-500'
+                      return (
+                        <div key={type} className="flex justify-between items-center text-sm">
+                          <span className="text-gray-700">{type}</span>
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 h-2 bg-gray-100 rounded-full overflow-hidden">
+                              <div className={`h-full ${color} rounded-full`} style={{ width: `${Math.min((uren / overzichtTotaal) * 100, 100)}%` }} />
+                            </div>
+                            <span className="font-semibold text-gray-700 w-12 text-right">{uren}u</span>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
 
               {/* Detail per datum */}
-              <div className="bg-white rounded-lg border overflow-hidden">
-                <div className="bg-gray-50 px-4 py-2 font-medium text-sm">Detail per dag</div>
+              <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+                <div className="bg-gray-50 px-5 py-3 font-semibold text-sm text-gray-700 border-b">Detail per dag</div>
                 <div className="divide-y">
                   {Object.entries(overzichtPerDatum).sort((a, b) => b[0].localeCompare(a[0])).map(([datum, items]) => {
                     const dagTotaal = items.reduce((sum, r) => sum + r.uren, 0)
@@ -2852,14 +3034,16 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
           )}
 
           {!overzichtLoading && overzichtProject && overzichtData.length === 0 && (
-            <div className="text-center py-12 text-gray-400 bg-white rounded-lg border">
-              Geen uren gevonden voor dit project{overzichtOrder ? ' / deze order' : ''}
+            <div className="text-center py-16 text-gray-400 bg-white rounded-xl border shadow-sm">
+              <div className="text-4xl mb-3">📭</div>
+              <p className="font-medium">Geen uren gevonden{overzichtOrder ? ' voor deze order' : ' voor dit project'}</p>
             </div>
           )}
 
           {!overzichtProject && (
-            <div className="text-center py-12 text-gray-400 bg-white rounded-lg border">
-              Selecteer een project om het urenoverzicht te bekijken
+            <div className="text-center py-16 text-gray-400 bg-white rounded-xl border shadow-sm">
+              <div className="text-4xl mb-3">📊</div>
+              <p className="font-medium">Selecteer een project om het urenoverzicht te bekijken</p>
             </div>
           )}
         </div>
@@ -2867,14 +3051,14 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
 
       {activeTab === 'nacalculatie' && (
         <div>
-          <div className="bg-white rounded-lg border p-4 mb-4">
+          <div className="bg-white rounded-xl border shadow-sm p-5 mb-4">
             <div className="flex flex-wrap gap-4 items-end">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Project</label>
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">Project</label>
                 <select
                   value={nacalcProject}
                   onChange={(e) => setNacalcProject(e.target.value)}
-                  className="border rounded px-3 py-2 min-w-48"
+                  className="border rounded-lg px-3 py-2.5 text-sm min-w-48 focus:ring-2 focus:ring-blue-500 outline-none"
                 >
                   <option value="">-- Kies project --</option>
                   {projecten.map(p => (
@@ -2883,8 +3067,8 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Filter</label>
-                <div className="flex gap-1">
+                <label className="block text-xs font-medium text-gray-500 mb-1.5">Filter</label>
+                <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
                   {[
                     { id: 'alle', label: 'Alle' },
                     { id: 'open', label: 'Open' },
@@ -2893,7 +3077,7 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
                     <button
                       key={f.id}
                       onClick={() => setNacalcFilter(f.id)}
-                      className={`px-3 py-2 text-sm rounded ${nacalcFilter === f.id ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'}`}
+                      className={`px-3 py-1.5 text-sm rounded-md transition-all ${nacalcFilter === f.id ? 'bg-white text-blue-700 shadow-sm font-medium' : 'text-gray-600 hover:text-gray-800'}`}
                     >
                       {f.label}
                     </button>
@@ -2906,65 +3090,86 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
           {nacalcLoading && <LoadingSpinner />}
 
           {!nacalcLoading && nacalcProject && nacalcGefilterdeOrders.length > 0 && (
-            <div className="space-y-2">
-              {/* Samenvatting bovenaan */}
-              <div className="grid grid-cols-3 gap-4 mb-4">
-                <div className="bg-white rounded-lg border p-4 text-center">
-                  <div className="text-2xl font-bold text-blue-600">{nacalcOrders.length}</div>
-                  <div className="text-xs text-gray-500">Totaal orders</div>
+            <div className="space-y-4">
+              {/* Samenvatting */}
+              <div className="grid grid-cols-3 gap-4">
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-5 text-center">
+                  <div className="text-3xl font-bold text-blue-700">{nacalcOrdersMetUren.length}</div>
+                  <div className="text-xs font-medium text-blue-600 mt-1">Orders met uren</div>
                 </div>
-                <div className="bg-white rounded-lg border p-4 text-center">
-                  <div className="text-2xl font-bold text-orange-600">{nacalcOrders.filter(o => o.uren_compleet && !o.nacalculatie_klaar).length}</div>
-                  <div className="text-xs text-gray-500">Uren compleet, nog nacalculeren</div>
+                <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-5 text-center">
+                  <div className="text-3xl font-bold text-amber-700">{nacalcOrdersMetUren.filter(o => o.uren_compleet && !o.nacalculatie_klaar).length}</div>
+                  <div className="text-xs font-medium text-amber-600 mt-1">Nog nacalculeren</div>
                 </div>
-                <div className="bg-white rounded-lg border p-4 text-center">
-                  <div className="text-2xl font-bold text-green-600">{nacalcOrders.filter(o => o.nacalculatie_klaar).length}</div>
-                  <div className="text-xs text-gray-500">Nagecalculeerd</div>
+                <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl border border-green-200 p-5 text-center">
+                  <div className="text-3xl font-bold text-green-700">{nacalcOrdersMetUren.filter(o => o.nacalculatie_klaar).length}</div>
+                  <div className="text-xs font-medium text-green-600 mt-1">Nagecalculeerd</div>
                 </div>
               </div>
 
+              {/* Progress bar */}
+              {nacalcOrdersMetUren.length > 0 && (
+                <div className="bg-white rounded-xl border shadow-sm p-4">
+                  <div className="flex justify-between text-xs text-gray-500 mb-2">
+                    <span>Voortgang nacalculatie</span>
+                    <span>{Math.round((nacalcOrdersMetUren.filter(o => o.nacalculatie_klaar).length / nacalcOrdersMetUren.length) * 100)}%</span>
+                  </div>
+                  <div className="w-full h-3 bg-gray-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-gradient-to-r from-green-400 to-green-600 rounded-full transition-all" style={{ width: `${(nacalcOrdersMetUren.filter(o => o.nacalculatie_klaar).length / nacalcOrdersMetUren.length) * 100}%` }} />
+                  </div>
+                </div>
+              )}
+
               {/* Orders lijst */}
-              <div className="bg-white rounded-lg border overflow-hidden">
+              <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
                 <table className="w-full">
                   <thead>
-                    <tr className="bg-gray-50 text-left text-xs text-gray-500">
-                      <th className="px-4 py-3">Order</th>
-                      <th className="px-4 py-3 text-right">Uren</th>
-                      <th className="px-4 py-3 text-right">Registraties</th>
-                      <th className="px-4 py-3 text-right">Producten</th>
-                      <th className="px-4 py-3 text-center">Uren compleet</th>
-                      <th className="px-4 py-3 text-center">Nagecalculeerd</th>
+                    <tr className="bg-gray-50 text-left text-xs font-medium text-gray-500 border-b">
+                      <th className="px-5 py-3">Order</th>
+                      <th className="px-5 py-3 text-right">Uren</th>
+                      <th className="px-5 py-3 text-right">Producten</th>
+                      <th className="px-5 py-3 text-center">Uren compleet</th>
+                      <th className="px-5 py-3 text-center">Nagecalculeerd</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
                     {nacalcGefilterdeOrders.map(order => (
-                      <tr key={order.id} className={`hover:bg-gray-50 ${order.nacalculatie_klaar ? 'bg-green-50' : order.uren_compleet ? 'bg-yellow-50' : ''}`}>
-                        <td className="px-4 py-3">
-                          <div className="font-medium text-sm">{order.naam || 'Naamloos'}</div>
-                          {order.totaal_uren === 0 && <span className="text-xs text-red-400">Geen uren geregistreerd</span>}
+                      <tr key={order.id} className={`transition-colors ${
+                        order.nacalculatie_klaar ? 'bg-green-50 hover:bg-green-100' : order.uren_compleet ? 'bg-amber-50 hover:bg-amber-100' : 'hover:bg-gray-50'
+                      }`}>
+                        <td className="px-5 py-4">
+                          <div className="font-medium text-sm text-gray-800">{order.naam || 'Naamloos'}</div>
+                          <div className="text-xs text-gray-400">{order.aantal_registraties} registraties</div>
                         </td>
-                        <td className="px-4 py-3 text-right font-medium text-sm">{order.totaal_uren}u</td>
-                        <td className="px-4 py-3 text-right text-sm text-gray-600">{order.aantal_registraties}</td>
-                        <td className="px-4 py-3 text-right text-sm text-gray-600">{order.aantal_producten}</td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-5 py-4 text-right">
+                          <span className="font-bold text-sm text-gray-800">{order.totaal_uren}u</span>
+                        </td>
+                        <td className="px-5 py-4 text-right text-sm text-gray-600">
+                          {order.aantal_producten > 0 ? (
+                            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">{order.aantal_producten}</span>
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 text-center">
                           <button
                             onClick={() => toggleNacalcStatus(order.id, 'uren_compleet')}
-                            className={`w-7 h-7 rounded border-2 flex items-center justify-center text-sm transition-colors ${
+                            className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center text-sm font-bold transition-all mx-auto ${
                               order.uren_compleet
-                                ? 'bg-orange-500 border-orange-500 text-white'
-                                : 'border-gray-300 hover:border-orange-400'
+                                ? 'bg-amber-500 border-amber-500 text-white shadow-sm'
+                                : 'border-gray-300 hover:border-amber-400 hover:bg-amber-50'
                             }`}
                           >
                             {order.uren_compleet ? '✓' : ''}
                           </button>
                         </td>
-                        <td className="px-4 py-3 text-center">
+                        <td className="px-5 py-4 text-center">
                           <button
                             onClick={() => toggleNacalcStatus(order.id, 'nacalculatie_klaar')}
-                            className={`w-7 h-7 rounded border-2 flex items-center justify-center text-sm transition-colors ${
+                            className={`w-8 h-8 rounded-lg border-2 flex items-center justify-center text-sm font-bold transition-all mx-auto ${
                               order.nacalculatie_klaar
-                                ? 'bg-green-500 border-green-500 text-white'
-                                : 'border-gray-300 hover:border-green-400'
+                                ? 'bg-green-500 border-green-500 text-white shadow-sm'
+                                : 'border-gray-300 hover:border-green-400 hover:bg-green-50'
                             }`}
                           >
                             {order.nacalculatie_klaar ? '✓' : ''}
@@ -2975,18 +3180,41 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
                   </tbody>
                 </table>
               </div>
+
+              {/* KPI: uren per product */}
+              {nacalcGefilterdeOrders.some(o => o.aantal_producten > 0 && o.totaal_uren > 0) && (
+                <div className="bg-white rounded-xl border shadow-sm p-5">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">📈 Uren per product (KPI)</h4>
+                  <div className="space-y-2">
+                    {nacalcGefilterdeOrders.filter(o => o.aantal_producten > 0 && o.totaal_uren > 0).map(order => {
+                      const urenPerProduct = (order.totaal_uren / order.aantal_producten).toFixed(1)
+                      return (
+                        <div key={order.id} className="flex items-center gap-3 text-sm">
+                          <span className="text-gray-700 w-40 truncate">{order.naam}</span>
+                          <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${Math.min((order.totaal_uren / Math.max(...nacalcGefilterdeOrders.map(o => o.totaal_uren))) * 100, 100)}%` }} />
+                          </div>
+                          <span className="font-bold text-indigo-600 w-20 text-right">{urenPerProduct}u/stuk</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
           {!nacalcLoading && nacalcProject && nacalcGefilterdeOrders.length === 0 && (
-            <div className="text-center py-12 text-gray-400 bg-white rounded-lg border">
-              {nacalcFilter !== 'alle' ? 'Geen orders gevonden met deze filter' : 'Geen orders gevonden voor dit project'}
+            <div className="text-center py-16 text-gray-400 bg-white rounded-xl border shadow-sm">
+              <div className="text-4xl mb-3">{nacalcFilter !== 'alle' ? '🔍' : '📭'}</div>
+              <p className="font-medium">{nacalcFilter !== 'alle' ? 'Geen orders gevonden met deze filter' : 'Geen orders met uren gevonden voor dit project'}</p>
             </div>
           )}
 
           {!nacalcProject && (
-            <div className="text-center py-12 text-gray-400 bg-white rounded-lg border">
-              Selecteer een project om de nacalculatie te beheren
+            <div className="text-center py-16 text-gray-400 bg-white rounded-xl border shadow-sm">
+              <div className="text-4xl mb-3">✅</div>
+              <p className="font-medium">Selecteer een project om de nacalculatie te beheren</p>
             </div>
           )}
         </div>
