@@ -2280,6 +2280,7 @@ const MedewerkerBeheer = ({ medewerkers, onRefresh }) => {
 // TIJDSREGISTRATIE
 // =====================================================
 const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
+  const [activeTab, setActiveTab] = useState('invoer') // 'invoer' of 'overzicht'
   const [datum, setDatum] = useState(new Date().toISOString().split('T')[0])
   const [selectedMedewerker, setSelectedMedewerker] = useState(null)
   const [regels, setRegels] = useState([])
@@ -2290,6 +2291,11 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
   const [aanmakenProject, setAanmakenProject] = useState(null) // regelIndex
   const [nieuwOrderNaam, setNieuwOrderNaam] = useState('')
   const [aanmakenOrder, setAanmakenOrder] = useState(null) // regelIndex
+  // Overzicht state
+  const [overzichtProject, setOverzichtProject] = useState('')
+  const [overzichtOrder, setOverzichtOrder] = useState('')
+  const [overzichtData, setOverzichtData] = useState([])
+  const [overzichtLoading, setOverzichtLoading] = useState(false)
 
   // Load all orders
   useEffect(() => {
@@ -2432,6 +2438,46 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
 
   const ordersVoorProject = (projectId) => allOrders.filter(o => o.project_id === projectId)
 
+  const loadOverzicht = async () => {
+    if (!overzichtProject) return
+    setOverzichtLoading(true)
+    try {
+      let query = supabase.from('uren_registratie').select('*').eq('project_id', overzichtProject).order('datum', { ascending: false })
+      if (overzichtOrder) {
+        query = query.eq('order_id', overzichtOrder)
+      }
+      const { data } = await query
+      setOverzichtData(data || [])
+    } catch (e) {
+      console.error('Fout:', e)
+    }
+    setOverzichtLoading(false)
+  }
+
+  useEffect(() => {
+    if (activeTab === 'overzicht' && overzichtProject) {
+      loadOverzicht()
+    }
+  }, [overzichtProject, overzichtOrder, activeTab])
+
+  // Group overzicht data
+  const overzichtPerMedewerker = {}
+  const overzichtPerTypeWerk = {}
+  let overzichtTotaal = 0
+  overzichtData.forEach(r => {
+    const mNaam = medewerkers.find(m => m.id === r.medewerker_id)?.naam || 'Onbekend'
+    overzichtPerMedewerker[mNaam] = (overzichtPerMedewerker[mNaam] || 0) + r.uren
+    overzichtPerTypeWerk[r.type_werk || 'overig'] = (overzichtPerTypeWerk[r.type_werk || 'overig'] || 0) + r.uren
+    overzichtTotaal += r.uren
+  })
+
+  // Group by date
+  const overzichtPerDatum = {}
+  overzichtData.forEach(r => {
+    if (!overzichtPerDatum[r.datum]) overzichtPerDatum[r.datum] = []
+    overzichtPerDatum[r.datum].push(r)
+  })
+
   return (
     <div>
       <div className="flex justify-between items-center mb-4">
@@ -2446,6 +2492,23 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
 
       {showBeheer && <MedewerkerBeheer medewerkers={medewerkers} onRefresh={onRefresh} />}
 
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={() => setActiveTab('invoer')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'invoer' ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'}`}
+        >
+          ✏️ Invoer
+        </button>
+        <button
+          onClick={() => setActiveTab('overzicht')}
+          className={`px-4 py-2 rounded-lg text-sm font-medium ${activeTab === 'overzicht' ? 'bg-blue-600 text-white' : 'bg-white border hover:bg-gray-50'}`}
+        >
+          📊 Overzicht
+        </button>
+      </div>
+
+      {activeTab === 'invoer' && (
+      <>
       <div className="bg-white rounded-lg border p-4 mb-4">
         <div className="flex flex-wrap gap-4 mb-4">
           <div>
@@ -2612,6 +2675,133 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
       {!selectedMedewerker && (
         <div className="text-center py-12 text-gray-400 bg-white rounded-lg border">
           Selecteer een medewerker om uren in te vullen
+        </div>
+      )}
+      </>
+      )}
+
+      {activeTab === 'overzicht' && (
+        <div>
+          <div className="bg-white rounded-lg border p-4 mb-4">
+            <div className="flex flex-wrap gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Project</label>
+                <select
+                  value={overzichtProject}
+                  onChange={(e) => { setOverzichtProject(e.target.value); setOverzichtOrder('') }}
+                  className="border rounded px-3 py-2 min-w-48"
+                >
+                  <option value="">-- Kies project --</option>
+                  {projecten.map(p => (
+                    <option key={p.id} value={p.id}>{p.emoji || ''} {p.naam || p.project_nummer}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Order (optioneel)</label>
+                <select
+                  value={overzichtOrder}
+                  onChange={(e) => setOverzichtOrder(e.target.value)}
+                  className="border rounded px-3 py-2 min-w-48"
+                  disabled={!overzichtProject}
+                >
+                  <option value="">Alle orders</option>
+                  {ordersVoorProject(overzichtProject).map(o => (
+                    <option key={o.id} value={o.id}>{o.naam}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {overzichtLoading && <LoadingSpinner />}
+
+          {!overzichtLoading && overzichtProject && overzichtData.length > 0 && (
+            <div className="space-y-4">
+              {/* Samenvatting */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-white rounded-lg border p-4">
+                  <div className="text-xs text-gray-500 mb-2">Totaal uren</div>
+                  <div className="text-3xl font-bold text-blue-600">{overzichtTotaal}u</div>
+                  <div className="text-sm text-gray-500">{overzichtData.length} registraties</div>
+                </div>
+
+                <div className="bg-white rounded-lg border p-4">
+                  <div className="text-xs text-gray-500 mb-2">Per medewerker</div>
+                  <div className="space-y-1">
+                    {Object.entries(overzichtPerMedewerker).sort((a, b) => b[1] - a[1]).map(([naam, uren]) => (
+                      <div key={naam} className="flex justify-between text-sm">
+                        <span>{naam}</span>
+                        <span className="font-medium">{uren}u</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-lg border p-4">
+                  <div className="text-xs text-gray-500 mb-2">Per type werk</div>
+                  <div className="space-y-1">
+                    {Object.entries(overzichtPerTypeWerk).sort((a, b) => b[1] - a[1]).map(([type, uren]) => (
+                      <div key={type} className="flex justify-between text-sm">
+                        <span>{type}</span>
+                        <span className="font-medium">{uren}u</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Detail per datum */}
+              <div className="bg-white rounded-lg border overflow-hidden">
+                <div className="bg-gray-50 px-4 py-2 font-medium text-sm">Detail per dag</div>
+                <div className="divide-y">
+                  {Object.entries(overzichtPerDatum).sort((a, b) => b[0].localeCompare(a[0])).map(([datum, items]) => {
+                    const dagTotaal = items.reduce((sum, r) => sum + r.uren, 0)
+                    return (
+                      <div key={datum} className="px-4 py-3">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-medium text-sm">{new Date(datum).toLocaleDateString('nl-BE', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                          <span className="text-sm font-semibold text-blue-600">{dagTotaal}u</span>
+                        </div>
+                        <div className="space-y-1">
+                          {items.map(r => {
+                            const mNaam = medewerkers.find(m => m.id === r.medewerker_id)?.naam || '?'
+                            const oNaam = allOrders.find(o => o.id === r.order_id)?.naam || '?'
+                            return (
+                              <div key={r.id} className="flex items-center gap-2 text-xs text-gray-600">
+                                <span className="bg-gray-100 px-2 py-0.5 rounded">{mNaam}</span>
+                                <span>{r.uren}u</span>
+                                <span className="text-gray-400">—</span>
+                                <span>{oNaam}</span>
+                                <span className={`px-1.5 py-0.5 rounded text-xs ${
+                                  r.type_werk === 'onderdelen' ? 'bg-blue-100 text-blue-700' :
+                                  r.type_werk === 'monteren' ? 'bg-green-100 text-green-700' :
+                                  r.type_werk === 'inpakken' ? 'bg-yellow-100 text-yellow-700' :
+                                  'bg-gray-100 text-gray-700'
+                                }`}>{r.type_werk}</span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!overzichtLoading && overzichtProject && overzichtData.length === 0 && (
+            <div className="text-center py-12 text-gray-400 bg-white rounded-lg border">
+              Geen uren gevonden voor dit project{overzichtOrder ? ' / deze order' : ''}
+            </div>
+          )}
+
+          {!overzichtProject && (
+            <div className="text-center py-12 text-gray-400 bg-white rounded-lg border">
+              Selecteer een project om het urenoverzicht te bekijken
+            </div>
+          )}
         </div>
       )}
     </div>
