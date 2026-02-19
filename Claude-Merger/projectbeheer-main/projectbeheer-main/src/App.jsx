@@ -2572,8 +2572,8 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
       updateRegel(projectModalRegelIndex, 'project_id', created.id)
       setProjectModalRegelIndex(null)
     }
-    // Refresh op achtergrond zodat main App ook up-to-date is
-    onRefresh()
+    // NIET onRefresh() aanroepen! Dat zet loading=true waardoor hele app unmount
+    // en alle invoer verloren gaat. Het project is al lokaal beschikbaar via extraProjecten.
   }
 
   const createInlineOrder = async (regelIndex) => {
@@ -3860,9 +3860,11 @@ export default function App() {
   const [lastSync, setLastSync] = useState(null)
   const [error, setError] = useState(null)
 
-  // Load all data
+  const initialLoadDone = useRef(false)
+
+  // Load all data — alleen loading spinner tonen bij eerste keer
   const loadData = useCallback(async () => {
-    setLoading(true)
+    if (!initialLoadDone.current) setLoading(true)
     setError(null)
     try {
       console.log('Loading data from Supabase...')
@@ -3894,6 +3896,7 @@ export default function App() {
       setMedewerkers(medewerkersData || [])
       setIsOnline(true)
       setLastSync(new Date().toISOString())
+      initialLoadDone.current = true
       console.log('All data loaded successfully!')
     } catch (e) {
       console.error('Fout bij laden:', e)
