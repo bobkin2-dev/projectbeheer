@@ -2400,8 +2400,8 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
   const [allOrders, setAllOrders] = useState([])
   const [saving, setSaving] = useState(false)
   const [showBeheer, setShowBeheer] = useState(false)
-  const [nieuwProjectNaam, setNieuwProjectNaam] = useState('')
-  const [aanmakenProject, setAanmakenProject] = useState(null) // regelIndex
+  const [showProjectModal, setShowProjectModal] = useState(false)
+  const [projectModalRegelIndex, setProjectModalRegelIndex] = useState(null)
   const [nieuwOrderNaam, setNieuwOrderNaam] = useState('')
   const [aanmakenOrder, setAanmakenOrder] = useState(null) // regelIndex
   // Calendar state
@@ -2558,24 +2558,13 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
     })))
   }
 
-  const createInlineProject = async (regelIndex) => {
-    if (!nieuwProjectNaam.trim()) return
-    try {
-      const nummer = `PRJ-${new Date().getFullYear()}-${(projecten.length + 1).toString().padStart(3, '0')}`
-      const { data: created } = await supabase.from('projecten').insert({
-        project_nummer: nummer,
-        naam: nieuwProjectNaam.trim(),
-        klant: ''
-      }).select().single()
-      if (created) {
-        updateRegel(regelIndex, 'project_id', created.id)
-        onRefresh()
-      }
-      setNieuwProjectNaam('')
-      setAanmakenProject(null)
-    } catch (e) {
-      alert('Fout: ' + e.message)
+  const handleProjectCreated = (created) => {
+    if (projectModalRegelIndex !== null) {
+      updateRegel(projectModalRegelIndex, 'project_id', created.id)
     }
+    onRefresh()
+    setShowProjectModal(false)
+    setProjectModalRegelIndex(null)
   }
 
   const createInlineOrder = async (regelIndex) => {
@@ -2844,19 +2833,11 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">u</span>
                   </div>
 
-                  {aanmakenProject === index ? (
-                    <div className="flex gap-1 items-center">
-                      <input type="text" value={nieuwProjectNaam} onChange={(e) => setNieuwProjectNaam(e.target.value)} placeholder="Projectnaam..." className="border rounded-lg px-2 py-2 text-sm w-40" autoFocus onKeyDown={(e) => e.key === 'Enter' && createInlineProject(index)} />
-                      <button onClick={() => createInlineProject(index)} className="px-2 py-2 bg-green-600 text-white rounded-lg text-sm">✓</button>
-                      <button onClick={() => setAanmakenProject(null)} className="px-2 py-2 bg-gray-300 rounded-lg text-sm">✕</button>
-                    </div>
-                  ) : (
-                    <select value={regel.project_id} onChange={(e) => { if (e.target.value === '__nieuw__') { setAanmakenProject(index) } else { updateRegel(index, 'project_id', e.target.value) } }} className="border rounded-lg px-2 py-2 text-sm min-w-40 focus:ring-2 focus:ring-blue-500 outline-none">
-                      <option value="">Project...</option>
-                      {projecten.map(p => <option key={p.id} value={p.id}>{p.emoji || ''} {p.naam || p.project_nummer}</option>)}
-                      <option value="__nieuw__">+ Nieuw project</option>
-                    </select>
-                  )}
+                  <select value={regel.project_id} onChange={(e) => { if (e.target.value === '__nieuw__') { setProjectModalRegelIndex(index); setShowProjectModal(true) } else { updateRegel(index, 'project_id', e.target.value) } }} className="border rounded-lg px-2 py-2 text-sm min-w-40 focus:ring-2 focus:ring-blue-500 outline-none">
+                    <option value="">Project...</option>
+                    {projecten.map(p => <option key={p.id} value={p.id}>{p.emoji || ''} {p.naam || p.project_nummer}</option>)}
+                    <option value="__nieuw__">+ Nieuw project</option>
+                  </select>
 
                   {aanmakenOrder === index ? (
                     <div className="flex gap-1 items-center">
@@ -3264,6 +3245,12 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
           )}
         </div>
       )}
+      {showProjectModal && (
+        <ProjectAanmaakModal
+          onClose={() => { setShowProjectModal(false); setProjectModalRegelIndex(null) }}
+          onCreate={handleProjectCreated}
+        />
+      )}
     </div>
   )
 }
@@ -3402,6 +3389,126 @@ const KanbanOrderModal = ({ order, onClose, onUpdate }) => {
           <button onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50">Annuleren</button>
           <button onClick={handleSave} disabled={saving} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
             {saving ? 'Opslaan...' : 'Opslaan'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// =====================================================
+// PROJECT AANMAAK MODAL
+// =====================================================
+const ProjectAanmaakModal = ({ onClose, onCreate }) => {
+  const [form, setForm] = useState({
+    project_nummer: '',
+    naam: '',
+    klant: '',
+    architect: '',
+    kleur: '#3B82F6',
+    emoji: '📁'
+  })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const generateNummer = async () => {
+      try {
+        const jaar = new Date().getFullYear()
+        const { data } = await supabase.from('projecten')
+          .select('project_nummer')
+          .like('project_nummer', `PRJ-${jaar}-%`)
+          .order('project_nummer', { ascending: false })
+          .limit(1)
+        let volgNr = 1
+        if (data && data.length > 0) {
+          const match = data[0].project_nummer.match(/PRJ-\d{4}-(\d+)/)
+          if (match) volgNr = parseInt(match[1], 10) + 1
+        }
+        setForm(f => ({ ...f, project_nummer: `PRJ-${jaar}-${volgNr.toString().padStart(3, '0')}` }))
+      } catch (e) {
+        const jaar = new Date().getFullYear()
+        setForm(f => ({ ...f, project_nummer: `PRJ-${jaar}-${Date.now().toString().slice(-4)}` }))
+      }
+      setLoading(false)
+    }
+    generateNummer()
+  }, [])
+
+  const handleSubmit = async () => {
+    if (!form.naam.trim()) { alert('Vul een projectnaam in'); return }
+    setLoading(true)
+    try {
+      const { data: created, error } = await supabase.from('projecten').insert({
+        project_nummer: form.project_nummer,
+        naam: form.naam.trim(),
+        klant: form.klant.trim(),
+        architect: form.architect.trim(),
+        kleur: form.kleur,
+        emoji: form.emoji
+      }).select().single()
+      if (error) throw error
+      onCreate(created)
+      onClose()
+    } catch (e) {
+      alert('Fout bij aanmaken: ' + e.message)
+    }
+    setLoading(false)
+  }
+
+  const emojiOpties = ['📁', '🏗️', '🏠', '🏢', '🏫', '🏪', '🪑', '🚪', '🎨', '🔧', '🔨', '⭐']
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b">
+          <h2 className="text-lg font-bold">📁 Nieuw project aanmaken</h2>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Projectnummer</label>
+            <input type="text" value={form.project_nummer} onChange={e => setForm({...form, project_nummer: e.target.value})}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Naam <span className="text-red-500">*</span></label>
+            <input type="text" value={form.naam} onChange={e => setForm({...form, naam: e.target.value})}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="bv. School Tongeren" autoFocus />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Klant</label>
+            <input type="text" value={form.klant} onChange={e => setForm({...form, klant: e.target.value})}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="bv. Architectenbureau X" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Architect</label>
+            <input type="text" value={form.architect} onChange={e => setForm({...form, architect: e.target.value})}
+              className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="optioneel" />
+          </div>
+          <div className="flex gap-4">
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Kleur</label>
+              <div className="flex gap-2 items-center">
+                <input type="color" value={form.kleur} onChange={e => setForm({...form, kleur: e.target.value})}
+                  className="w-10 h-10 rounded cursor-pointer border" />
+                <span className="text-xs text-gray-400">{form.kleur}</span>
+              </div>
+            </div>
+            <div className="flex-1">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Icoon</label>
+              <div className="flex flex-wrap gap-1">
+                {emojiOpties.map(e => (
+                  <button key={e} onClick={() => setForm({...form, emoji: e})}
+                    className={`text-lg w-8 h-8 rounded transition-colors ${form.emoji === e ? 'bg-blue-100 ring-2 ring-blue-400' : 'hover:bg-gray-100'}`}
+                  >{e}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="p-5 border-t bg-gray-50 rounded-b-xl flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-200 rounded-lg">Annuleren</button>
+          <button onClick={handleSubmit} disabled={loading} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {loading ? 'Bezig...' : '✓ Aanmaken'}
           </button>
         </div>
       </div>
@@ -3791,21 +3898,11 @@ export default function App() {
     loadData()
   }, [loadData])
 
-  const createProject = async () => {
-    const nummer = `PRJ-${new Date().getFullYear()}-${(projecten.length + 1).toString().padStart(3, '0')}`
-    try {
-      const { data: created, error } = await supabase.from('projecten').insert({
-        project_nummer: nummer,
-        naam: '',
-        klant: ''
-      }).select().single()
-      
-      if (error) throw error
-      setProjecten([created, ...projecten])
-      setSelectedProject(created)
-    } catch (e) {
-      alert('Fout bij aanmaken: ' + e.message)
-    }
+  const [showProjectModal, setShowProjectModal] = useState(false)
+
+  const handleNewProject = (created) => {
+    setProjecten([created, ...projecten])
+    setSelectedProject(created)
   }
 
   const updateProject = (updatedProject) => {
@@ -3899,7 +3996,7 @@ export default function App() {
           <>
             {view === 'projecten' && (
               <div>
-                <button onClick={createProject} className="mb-6 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">+ Nieuw Project</button>
+                <button onClick={() => setShowProjectModal(true)} className="mb-6 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">+ Nieuw Project</button>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {projecten.map(p => <ProjectCard key={p.id} project={p} onClick={() => setSelectedProject(p)} />)}
                 </div>
@@ -3913,6 +4010,13 @@ export default function App() {
           </>
         )}
       </main>
+
+      {showProjectModal && (
+        <ProjectAanmaakModal
+          onClose={() => setShowProjectModal(false)}
+          onCreate={handleNewProject}
+        />
+      )}
     </div>
   )
 }
