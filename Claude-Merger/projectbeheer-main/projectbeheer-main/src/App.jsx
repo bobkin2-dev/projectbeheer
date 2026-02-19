@@ -2392,7 +2392,7 @@ const MedewerkerBeheer = ({ medewerkers, onRefresh }) => {
 // =====================================================
 // TIJDSREGISTRATIE
 // =====================================================
-const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
+const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) => {
   const [activeTab, setActiveTab] = useState('invoer') // 'invoer', 'overzicht', 'nacalculatie'
   const [datum, setDatum] = useState(new Date().toISOString().split('T')[0])
   const [selectedMedewerker, setSelectedMedewerker] = useState(null)
@@ -2402,6 +2402,10 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
   const [showBeheer, setShowBeheer] = useState(false)
   const [showProjectModal, setShowProjectModal] = useState(false)
   const [projectModalRegelIndex, setProjectModalRegelIndex] = useState(null)
+  const [extraProjecten, setExtraProjecten] = useState([]) // lokaal toegevoegde projecten (voor onmiddellijke zichtbaarheid)
+
+  // Merge prop-projecten met lokaal toegevoegde (dedupliceer op id)
+  const projecten = [...projectenProp, ...extraProjecten.filter(ep => !projectenProp.find(p => p.id === ep.id))]
   const [nieuwOrderNaam, setNieuwOrderNaam] = useState('')
   const [aanmakenOrder, setAanmakenOrder] = useState(null) // regelIndex
   // Calendar state
@@ -2559,12 +2563,17 @@ const Tijdsregistratie = ({ projecten, medewerkers, onRefresh }) => {
   }
 
   const handleProjectCreated = (created) => {
+    // Direct lokaal toevoegen zodat het meteen in de dropdown zichtbaar is
+    setExtraProjecten(prev => [...prev, created])
+    // Modal sluiten
+    setShowProjectModal(false)
+    // Project_id op de juiste regel zetten (als getriggerd vanuit uren invoer)
     if (projectModalRegelIndex !== null) {
       updateRegel(projectModalRegelIndex, 'project_id', created.id)
+      setProjectModalRegelIndex(null)
     }
+    // Refresh op achtergrond zodat main App ook up-to-date is
     onRefresh()
-    setShowProjectModal(false)
-    setProjectModalRegelIndex(null)
   }
 
   const createInlineOrder = async (regelIndex) => {
