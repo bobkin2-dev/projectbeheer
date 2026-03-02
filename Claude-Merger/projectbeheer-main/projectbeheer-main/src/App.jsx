@@ -77,6 +77,21 @@ const LoadingSpinner = () => (
   </div>
 )
 
+// Toast notification (auto-dismiss)
+const Toast = ({ message, onDone }) => {
+  useEffect(() => {
+    const t = setTimeout(onDone, 2500)
+    return () => clearTimeout(t)
+  }, [onDone])
+  return (
+    <div className="fixed bottom-6 right-6 z-50 animate-fade-in">
+      <div className="bg-green-600 text-white px-5 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2">
+        <span>✓</span> {message}
+      </div>
+    </div>
+  )
+}
+
 const ConnectionStatus = ({ isOnline, lastSync }) => (
   <div className={`flex items-center gap-2 text-xs ${isOnline ? 'text-green-600' : 'text-red-600'}`}>
     <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></span>
@@ -2399,6 +2414,7 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
   const [regels, setRegels] = useState([])
   const [allOrders, setAllOrders] = useState([])
   const [saving, setSaving] = useState(false)
+  const [toastMsg, setToastMsg] = useState(null)
   const [showBeheer, setShowBeheer] = useState(false)
   const [showProjectModal, setShowProjectModal] = useState(false)
   const [projectModalRegelIndex, setProjectModalRegelIndex] = useState(null)
@@ -2469,19 +2485,19 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
           uren: r.uren,
           project_id: r.project_id,
           order_id: r.order_id,
-          type_werk: r.type_werk || 'onderdelen',
+          type_werk: r.type_werk || 'overig',
           notitie: r.notitie || '',
           saved: true
         })))
       } else {
-        setRegels([{ uren: '', project_id: '', order_id: '', type_werk: 'onderdelen', notitie: '', saved: false }])
+        setRegels([{ uren: '', project_id: '', order_id: '', type_werk: 'overig', notitie: '', saved: false }])
       }
     }
     load()
   }, [selectedMedewerker, datum])
 
   const addRegel = () => {
-    setRegels([...regels, { uren: '', project_id: '', order_id: '', type_werk: 'onderdelen', notitie: '', saved: false }])
+    setRegels([...regels, { uren: '', project_id: '', order_id: '', type_werk: 'overig', notitie: '', saved: false }])
   }
 
   const updateRegel = (index, field, value) => {
@@ -2565,7 +2581,7 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
       }
 
       setRegels([...regels])
-      alert('Uren opgeslagen!')
+      setToastMsg('Uren opgeslagen!')
     } catch (e) {
       alert('Fout bij opslaan: ' + e.message)
     }
@@ -2589,7 +2605,7 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
       uren: r.uren,
       project_id: r.project_id,
       order_id: r.order_id,
-      type_werk: r.type_werk || 'onderdelen',
+      type_werk: r.type_werk || 'overig',
       notitie: r.notitie || '',
       saved: false
     })))
@@ -3373,6 +3389,7 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
           onCreate={handleProjectCreated}
         />
       )}
+      {toastMsg && <Toast message={toastMsg} onDone={() => setToastMsg(null)} />}
     </div>
   )
 }
@@ -4085,6 +4102,7 @@ export default function App() {
                   onClick={() => {
                     setView(v.id)
                     if (v.id !== 'projecten') setSelectedProject(null)
+                    if (v.id === 'projecten') loadData()
                   }}
                   className={`px-3 py-1.5 rounded text-sm ${view === v.id && !selectedProject ? 'bg-blue-100 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`}
                 >
