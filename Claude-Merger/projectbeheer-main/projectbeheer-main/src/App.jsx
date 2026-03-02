@@ -2945,7 +2945,7 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
                     </div>
                     {[{ label: "+15'", val: 0.25 }, { label: "+30'", val: 0.5 }, { label: '+1u', val: 1 }].map(b => (
                       <button key={b.label} onClick={() => updateRegel(index, 'uren', (parseFloat(regel.uren) || 0) + b.val)}
-                        className="px-1.5 py-1 text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+                        className="px-2 py-2 text-xs font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
                       >{b.label}</button>
                     ))}
                   </div>
@@ -2984,9 +2984,9 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
 
                   <div className="flex items-center gap-1 ml-auto">
                     {!regel.saved && (
-                      <button onClick={() => saveEnkeleRegel(index)} className="text-blue-400 hover:text-blue-600 transition-colors text-sm" title="Deze regel opslaan">💾</button>
+                      <button onClick={() => saveEnkeleRegel(index)} className="px-2 py-2 text-sm bg-blue-50 text-blue-500 border border-blue-200 rounded-lg hover:bg-blue-100 hover:text-blue-700 transition-colors" title="Deze regel opslaan">💾</button>
                     )}
-                    <button onClick={() => removeRegel(index)} className="text-red-300 hover:text-red-500 transition-colors text-lg">✕</button>
+                    <button onClick={() => removeRegel(index)} className="px-2 py-2 text-sm bg-red-50 text-red-400 border border-red-200 rounded-lg hover:bg-red-100 hover:text-red-600 transition-colors">✕</button>
                   </div>
                 </div>
 
