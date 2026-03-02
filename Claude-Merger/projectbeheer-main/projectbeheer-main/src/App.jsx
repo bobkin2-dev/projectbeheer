@@ -1641,21 +1641,23 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, medewerkers = [], onBa
     loadOrders()
   }, [project.id])
 
-  const saveProjectDetails = async () => {
+  const saveProjectDetails = async (overrides = {}) => {
+    const toSave = { ...editingProject, ...overrides }
     try {
       await supabase.from('projecten').update({
-        project_nummer: editingProject.project_nummer,
-        naam: editingProject.naam,
-        klant: editingProject.klant,
-        architect: editingProject.architect,
-        telefoon: editingProject.telefoon,
-        email: editingProject.email,
-        adres: editingProject.adres,
-        notities: editingProject.notities,
-        kleur: editingProject.kleur,
-        emoji: editingProject.emoji
+        project_nummer: toSave.project_nummer,
+        naam: toSave.naam,
+        klant: toSave.klant,
+        architect: toSave.architect,
+        telefoon: toSave.telefoon,
+        email: toSave.email,
+        adres: toSave.adres,
+        notities: toSave.notities,
+        kleur: toSave.kleur,
+        emoji: toSave.emoji,
+        kanban_verborgen: toSave.kanban_verborgen || false
       }).eq('id', project.id)
-      onUpdateProject(editingProject)
+      onUpdateProject(toSave)
     } catch (e) {
       alert('Fout: ' + e.message)
     }
@@ -1867,7 +1869,7 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, medewerkers = [], onBa
               {['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#84CC16'].map(color => (
                 <button
                   key={color}
-                  onClick={() => { setEditingProject({ ...editingProject, kleur: color }); setTimeout(saveProjectDetails, 100) }}
+                  onClick={() => { setEditingProject({ ...editingProject, kleur: color }); saveProjectDetails({ kleur: color }) }}
                   className={`w-8 h-8 rounded-full border-2 ${editingProject.kleur === color ? 'border-gray-800 scale-110' : 'border-transparent'}`}
                   style={{ backgroundColor: color }}
                 />
@@ -1880,7 +1882,7 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, medewerkers = [], onBa
               {['🏠', '🏢', '🏗️', '🔧', '⭐', '🎨', '📦', '🚀', '💼', '🛠️', '🏭', '🪑'].map(emoji => (
                 <button
                   key={emoji}
-                  onClick={() => { setEditingProject({ ...editingProject, emoji: emoji }); setTimeout(saveProjectDetails, 100) }}
+                  onClick={() => { setEditingProject({ ...editingProject, emoji: emoji }); saveProjectDetails({ emoji: emoji }) }}
                   className={`w-8 h-8 rounded border text-lg flex items-center justify-center ${editingProject.emoji === emoji ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}
                 >
                   {emoji}
@@ -1889,7 +1891,21 @@ const ProjectDetail = ({ project, bibliotheek, sjablonen, medewerkers = [], onBa
             </div>
           </div>
         </div>
-        <div className="mt-2 text-lg">💰 <strong className="text-green-600">€{totaalProject.toFixed(2)}</strong> • 📦 {orders.length} orders</div>
+        <div className="mt-3 flex items-center justify-between">
+          <div className="text-lg">💰 <strong className="text-green-600">€{totaalProject.toFixed(2)}</strong> • 📦 {orders.length} orders</div>
+          <label className="flex items-center gap-2 text-sm text-gray-500 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={editingProject.kanban_verborgen || false}
+              onChange={(e) => {
+                setEditingProject({ ...editingProject, kanban_verborgen: e.target.checked })
+                saveProjectDetails({ kanban_verborgen: e.target.checked })
+              }}
+              className="rounded border-gray-300"
+            />
+            Verberg uit kanban bord
+          </label>
+        </div>
       </div>
 
       <div className="flex gap-1 mb-4 bg-gray-100 p-1 rounded-xl">
@@ -3675,10 +3691,13 @@ const KanbanBoard = ({ projecten }) => {
     const loadAllOrders = async () => {
       try {
         const { data: orders } = await supabase.from('orders').select('*')
-        const ordersWithProject = (orders || []).map(o => ({
-          ...o,
-          project: projecten.find(p => p.id === o.project_id)
-        }))
+        const verborgenProjectIds = projecten.filter(p => p.kanban_verborgen).map(p => p.id)
+        const ordersWithProject = (orders || [])
+          .filter(o => !verborgenProjectIds.includes(o.project_id))
+          .map(o => ({
+            ...o,
+            project: projecten.find(p => p.id === o.project_id)
+          }))
         setAllOrders(ordersWithProject)
       } catch (e) {
         console.error('Fout:', e)

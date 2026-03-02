@@ -20,6 +20,9 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS notitie TEXT;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS goedkeuring_datum DATE;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS plaatsing_datum DATE;
 
+-- Projecten: optie om uit kanban bord te verbergen (bv. stock-projecten)
+ALTER TABLE projecten ADD COLUMN IF NOT EXISTS kanban_verborgen BOOLEAN DEFAULT false;
+
 -- Type werk uitbreiden met lakwerk en metaalwerk
 -- (type_werk in uren_registratie: drop old constraint, add new)
 ALTER TABLE uren_registratie DROP CONSTRAINT IF EXISTS uren_registratie_type_werk_check;
