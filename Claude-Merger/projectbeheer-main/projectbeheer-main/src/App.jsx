@@ -2408,6 +2408,8 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
   const projecten = [...projectenProp, ...extraProjecten.filter(ep => !projectenProp.find(p => p.id === ep.id))]
   const [nieuwOrderNaam, setNieuwOrderNaam] = useState('')
   const [aanmakenOrder, setAanmakenOrder] = useState(null) // regelIndex
+  const [showVerplaatsModal, setShowVerplaatsModal] = useState(false)
+  const [verplaatsDatum, setVerplaatsDatum] = useState('')
   // Calendar state
   const [calendarMonth, setCalendarMonth] = useState(() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })
   const [dagenMetUren, setDagenMetUren] = useState({}) // { '2026-02-18': 6.5, ... }
@@ -2504,6 +2506,37 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
     setRegels(regels.filter((_, i) => i !== index))
   }
 
+  const saveEnkeleRegel = async (index) => {
+    if (!selectedMedewerker) return
+    const regel = regels[index]
+    if (!regel.uren || !regel.project_id || !regel.order_id) {
+      alert('Vul uren, project en order in')
+      return
+    }
+    try {
+      const data = {
+        medewerker_id: selectedMedewerker.id,
+        datum: datum,
+        project_id: regel.project_id,
+        order_id: regel.order_id,
+        type_werk: regel.type_werk,
+        uren: parseFloat(regel.uren),
+        notitie: regel.notitie || null
+      }
+      if (regel.id) {
+        await supabase.from('uren_registratie').update(data).eq('id', regel.id)
+      } else {
+        const { data: created } = await supabase.from('uren_registratie').insert(data).select().single()
+        if (created) regel.id = created.id
+      }
+      const updated = [...regels]
+      updated[index] = { ...updated[index], saved: true }
+      setRegels(updated)
+    } catch (e) {
+      alert('Fout bij opslaan: ' + e.message)
+    }
+  }
+
   const handleSave = async () => {
     if (!selectedMedewerker) return
     setSaving(true)
@@ -2560,6 +2593,25 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
       notitie: r.notitie || '',
       saved: false
     })))
+  }
+
+  const verplaatsUren = async () => {
+    if (!selectedMedewerker || !verplaatsDatum) return
+    if (verplaatsDatum === datum) { alert('Kies een andere datum dan de huidige'); return }
+    const opgeslagenRegels = regels.filter(r => r.id)
+    if (opgeslagenRegels.length === 0) { alert('Er zijn geen opgeslagen uren om te verplaatsen'); return }
+    const nieuweDatumFormatted = `${verplaatsDatum.split('-')[2]}/${verplaatsDatum.split('-')[1]}/${verplaatsDatum.split('-')[0]}`
+    if (!confirm(`Alle ${opgeslagenRegels.length} uren-registraties verplaatsen naar ${nieuweDatumFormatted}?`)) return
+    try {
+      const ids = opgeslagenRegels.map(r => r.id)
+      await supabase.from('uren_registratie').update({ datum: verplaatsDatum }).in('id', ids)
+      setShowVerplaatsModal(false)
+      setVerplaatsDatum('')
+      // Navigeer naar de nieuwe datum om de verplaatste uren te zien
+      setDatum(verplaatsDatum)
+    } catch (e) {
+      alert('Fout bij verplaatsen: ' + e.message)
+    }
   }
 
   const handleProjectCreated = (created) => {
@@ -2768,12 +2820,22 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
         <div className="flex flex-wrap gap-4 items-end mb-4">
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">Datum</label>
-            <input
-              type="date"
-              value={datum}
-              onChange={(e) => setDatum(e.target.value)}
-              className="border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-            />
+            <div className="relative">
+              <button
+                onClick={() => document.getElementById('datum-picker-hidden').showPicker()}
+                className="border rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white hover:bg-gray-50 cursor-pointer flex items-center gap-2"
+              >
+                📅 {datum ? `${datum.split('-')[2]}/${datum.split('-')[1]}/${datum.split('-')[0]}` : 'Kies datum'}
+              </button>
+              <input
+                id="datum-picker-hidden"
+                type="date"
+                value={datum}
+                onChange={(e) => setDatum(e.target.value)}
+                className="absolute inset-0 opacity-0 cursor-pointer"
+                tabIndex={-1}
+              />
+            </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5">Medewerker</label>
@@ -2792,16 +2854,55 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
             </select>
           </div>
           {selectedMedewerker && (
-            <button
-              onClick={kopieerVorigeDag}
-              className="px-4 py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-sm hover:bg-amber-100 transition-colors"
-              title="Kopieer de uren van gisteren als template"
-            >
-              📋 Kopieer gisteren
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={kopieerVorigeDag}
+                className="px-4 py-2.5 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg text-sm hover:bg-amber-100 transition-colors"
+                title="Kopieer de uren van gisteren als template"
+              >
+                📋 Kopieer gisteren
+              </button>
+              <button
+                onClick={() => { setVerplaatsDatum(''); setShowVerplaatsModal(true) }}
+                className="px-4 py-2.5 bg-purple-50 text-purple-700 border border-purple-200 rounded-lg text-sm hover:bg-purple-100 transition-colors"
+                title="Verplaats alle uren van deze dag naar een andere dag"
+              >
+                📅 Verplaats dag
+              </button>
+            </div>
           )}
         </div>
       </div>
+
+      {showVerplaatsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowVerplaatsModal(false)}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-sm mx-4 p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-lg mb-1">📅 Uren verplaatsen</h3>
+            <p className="text-sm text-gray-500 mb-4">
+              Verplaats alle {regels.filter(r => r.id).length} opgeslagen uren van <strong>{datum.split('-')[2]}/{datum.split('-')[1]}/{datum.split('-')[0]}</strong> naar een andere dag.
+            </p>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nieuwe datum</label>
+              <input
+                type="date"
+                value={verplaatsDatum}
+                onChange={(e) => setVerplaatsDatum(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 outline-none"
+                autoFocus
+              />
+              {verplaatsDatum && (
+                <p className="text-xs text-gray-400 mt-1">→ {verplaatsDatum.split('-')[2]}/{verplaatsDatum.split('-')[1]}/{verplaatsDatum.split('-')[0]}</p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowVerplaatsModal(false)} className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg">Annuleren</button>
+              <button onClick={verplaatsUren} disabled={!verplaatsDatum} className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50">
+                Verplaatsen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedMedewerker && (
         <div className="bg-white rounded-xl border shadow-sm p-5 mb-4">
@@ -2829,17 +2930,24 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
                 regel.saved ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
               }`}>
                 <div className="flex flex-wrap gap-2 items-center">
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={regel.uren}
-                      onChange={(e) => updateRegel(index, 'uren', e.target.value)}
-                      placeholder="0"
-                      className="w-20 border rounded-lg px-2 py-2 text-sm text-right font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                      step="0.5"
-                      min="0"
-                    />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">u</span>
+                  <div className="flex items-center gap-1">
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={regel.uren}
+                        onChange={(e) => updateRegel(index, 'uren', e.target.value)}
+                        placeholder="0"
+                        className="w-20 border rounded-lg px-2 py-2 text-sm text-right font-medium focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                        step="0.25"
+                        min="0"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-400 pointer-events-none">u</span>
+                    </div>
+                    {[{ label: "+15'", val: 0.25 }, { label: "+30'", val: 0.5 }, { label: '+1u', val: 1 }].map(b => (
+                      <button key={b.label} onClick={() => updateRegel(index, 'uren', (parseFloat(regel.uren) || 0) + b.val)}
+                        className="px-1.5 py-1 text-[10px] font-medium bg-blue-50 text-blue-600 border border-blue-200 rounded hover:bg-blue-100 transition-colors"
+                      >{b.label}</button>
+                    ))}
                   </div>
 
                   <select value={regel.project_id} onChange={(e) => { if (e.target.value === '__nieuw__') { setProjectModalRegelIndex(index); setShowProjectModal(true) } else { updateRegel(index, 'project_id', e.target.value) } }} className="border rounded-lg px-2 py-2 text-sm min-w-40 focus:ring-2 focus:ring-blue-500 outline-none">
@@ -2874,7 +2982,12 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
                     ))}
                   </div>
 
-                  <button onClick={() => removeRegel(index)} className="text-red-300 hover:text-red-500 ml-auto transition-colors text-lg">✕</button>
+                  <div className="flex items-center gap-1 ml-auto">
+                    {!regel.saved && (
+                      <button onClick={() => saveEnkeleRegel(index)} className="text-blue-400 hover:text-blue-600 transition-colors text-sm" title="Deze regel opslaan">💾</button>
+                    )}
+                    <button onClick={() => removeRegel(index)} className="text-red-300 hover:text-red-500 transition-colors text-lg">✕</button>
+                  </div>
                 </div>
 
                 {regel.order_id && <OrderProducten orderId={regel.order_id} />}
