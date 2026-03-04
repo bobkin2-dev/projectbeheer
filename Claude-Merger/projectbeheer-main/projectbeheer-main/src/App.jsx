@@ -2864,7 +2864,7 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
                 type="date"
                 value={datum}
                 onChange={(e) => setDatum(e.target.value)}
-                className="absolute inset-0 opacity-0 cursor-pointer"
+                className="absolute inset-0 opacity-0 pointer-events-none"
                 tabIndex={-1}
               />
             </div>
