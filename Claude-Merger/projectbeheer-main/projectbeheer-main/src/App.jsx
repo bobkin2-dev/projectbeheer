@@ -2563,7 +2563,11 @@ const Tijdsregistratie = ({ projecten: projectenProp, medewerkers, onRefresh }) 
       }
       const updated = [...regels]
       updated[index] = { ...updated[index], saved: true }
+      if (index === updated.length - 1) {
+        updated.push({ uren: '', project_id: '', order_id: '', type_werk: 'overig', notitie: '', saved: false })
+      }
       setRegels(updated)
+      setToastMsg('Uren opgeslagen!')
     } catch (e) {
       alert('Fout bij opslaan: ' + e.message)
     }
