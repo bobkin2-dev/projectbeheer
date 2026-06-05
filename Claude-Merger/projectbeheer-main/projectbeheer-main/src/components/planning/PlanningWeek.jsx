@@ -243,8 +243,8 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
         </div>
       </div>
 
-      {/* Planning grid */}
-      <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+      {/* Planning grid — overflow-x scroll maar sticky header werkt via page scroll */}
+      <div className="bg-white rounded-xl border shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full" style={{ minWidth: '900px', tableLayout: 'fixed' }}>
             <colgroup>
@@ -255,9 +255,9 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
               ))}
             </colgroup>
 
-            {/* Header: medewerker avatars */}
+            {/* Header: medewerker avatars — sticky bij scrollen */}
             <thead className="sticky top-0 z-20">
-              <tr className="bg-gray-50 border-b">
+              <tr className="bg-gray-50 border-b shadow-sm">
                 <th className="p-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Dag</th>
                 <th className="p-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Cap.</th>
                 {medewerkers.map(m => (

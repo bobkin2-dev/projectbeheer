@@ -18,7 +18,8 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
     return d.toISOString().split('T')[0]
   })
   const [voorkeurMedewerker, setVoorkeurMedewerker] = useState('')
-  const [toonWeekend, setToonWeekend] = useState(false) // ook za/zo inplannen?
+  const [toonWeekend, setToonWeekend] = useState(false)
+  const [gebruikFlex, setGebruikFlex] = useState(false) // standaard GEEN flex medewerkers
 
   // Load orders for selected project
   useEffect(() => {
@@ -81,10 +82,10 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
         bezetting[key] = (bezetting[key] || 0) + b.uren
       })
 
-      // Filter medewerkers
+      // Filter medewerkers (flex alleen als toggle aan staat)
       const beschikbareMedewerkers = voorkeurMedewerker
         ? medewerkers.filter(m => m.id === voorkeurMedewerker)
-        : medewerkers.filter(m => m.actief)
+        : medewerkers.filter(m => m.actief && (gebruikFlex || !m.is_flex))
 
       // Generate blokken within the date range
       const nieuweBlokken = []
@@ -275,31 +276,43 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-blue-600 mb-1">Voorkeur medewerker</label>
-                      <select
-                        value={voorkeurMedewerker}
-                        onChange={(e) => setVoorkeurMedewerker(e.target.value)}
-                        className="w-full border rounded-lg px-3 py-2 text-sm"
-                      >
-                        <option value="">Automatisch verdelen</option>
-                        {medewerkers.filter(m => m.actief).map(m => (
-                          <option key={m.id} value={m.id}>{m.naam} {m.is_flex ? '(flex)' : ''}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex items-end pb-1">
-                      <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={toonWeekend}
-                          onChange={(e) => setToonWeekend(e.target.checked)}
-                          className="rounded border-gray-300 text-blue-600"
-                        />
-                        Ook weekend inplannen
-                      </label>
-                    </div>
+                  <div>
+                    <label className="block text-xs text-blue-600 mb-1">Voorkeur medewerker</label>
+                    <select
+                      value={voorkeurMedewerker}
+                      onChange={(e) => setVoorkeurMedewerker(e.target.value)}
+                      className="w-full border rounded-lg px-3 py-2 text-sm"
+                    >
+                      <option value="">Automatisch verdelen</option>
+                      {medewerkers.filter(m => m.actief && (gebruikFlex || !m.is_flex)).map(m => (
+                        <option key={m.id} value={m.id}>{m.naam} {m.is_flex ? '(flex)' : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="flex gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setGebruikFlex(!gebruikFlex)}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        gebruikFlex
+                          ? 'bg-blue-100 border-blue-300 text-blue-700'
+                          : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                      }`}
+                    >
+                      {gebruikFlex ? '👥 Flex medewerkers: AAN' : '👤 Enkel vaste medewerkers'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setToonWeekend(!toonWeekend)}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        toonWeekend
+                          ? 'bg-amber-100 border-amber-300 text-amber-700'
+                          : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                      }`}
+                    >
+                      {toonWeekend ? '📅 Weekend: AAN' : '📅 Enkel werkdagen'}
+                    </button>
                   </div>
                 </div>
               )}
