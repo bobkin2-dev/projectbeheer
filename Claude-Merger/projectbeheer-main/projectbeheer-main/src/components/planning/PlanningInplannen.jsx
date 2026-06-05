@@ -183,7 +183,7 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
     setSaving(false)
   }
 
-  // Verwijder blok en herplan naar volgende vrije dag
+  // Verwijder blok en herplan naar eerstvolgende vrije slot (bij eender welke medewerker)
   const verwijderUitVoorstel = (index) => {
     const verwijderd = voorstel[index]
     const resterendeBlokken = voorstel.filter((_, i) => i !== index)
@@ -191,24 +191,18 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
     // Geef capaciteit terug
     const bezetting = { ...bezettingMap }
     const oudeKey = `${verwijderd.datum}-${verwijderd.medewerker_id}`
-    bezetting[oudeKey] = (bezetting[oudeKey] || 0) - verwijderd.uren
+    bezetting[oudeKey] = Math.max(0, (bezetting[oudeKey] || 0) - verwijderd.uren)
 
-    // Zoek volgende vrije dag NA het laatste blok in het voorstel
+    // Beschikbare medewerkers (zelfde logica als bij genereren)
     const beschikbareMedewerkers = voorkeurMedewerker
       ? medewerkers.filter(m => m.id === voorkeurMedewerker)
       : medewerkers.filter(m => m.actief && (gebruikFlex || !m.is_flex))
 
-    const laatsteDatum = resterendeBlokken.length > 0
-      ? resterendeBlokken.map(b => b.datum).sort().pop()
-      : startDatum
-
+    // Zoek het allereerste vrije slot doorheen ALLE dagen en ALLE medewerkers
     let resterend = verwijderd.uren
-    let currentDate = new Date(laatsteDatum + 'T12:00:00')
-    currentDate.setDate(currentDate.getDate() + 1) // start dag NA laatste
-    const eindDate = new Date(eindDatum + 'T12:00:00')
-    // Zoek tot 30 dagen voorbij het bereik als noodoplossing
-    const maxDate = new Date(eindDate)
-    maxDate.setDate(maxDate.getDate() + 30)
+    let currentDate = new Date(startDatum + 'T12:00:00')
+    const maxDate = new Date(eindDatum + 'T12:00:00')
+    maxDate.setDate(maxDate.getDate() + 30) // noodoplossing
 
     const extraBlokken = []
 
@@ -219,6 +213,7 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
       const planDezeDag = isWerkdag || (isWeekend && toonWeekend)
 
       if (planDezeDag) {
+        // Probeer elke medewerker op deze dag
         for (const mw of beschikbareMedewerkers) {
           if (resterend <= 0) break
           const maxUren = mw.uren_per_dag || 8
@@ -231,7 +226,7 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
             b.datum === datum && b.medewerker_id === mw.id && b.is_marge
           )
 
-          // Check of deze dag al in het voorstel zit voor deze medewerker
+          // Check of dit slot al bezet is door een ander blok in het voorstel
           const alInVoorstel = resterendeBlokken.some(b => b.datum === datum && b.medewerker_id === mw.id)
 
           if (vrij > 0 && !isMargeDag && !alInVoorstel) {
@@ -244,7 +239,7 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
             })
             bezetting[key] = bezet + uren
             resterend -= uren
-            break // 1 blok per dag
+            break // 1 blok per dag, ga naar volgende dag
           }
         }
       }
