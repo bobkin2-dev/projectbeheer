@@ -17,6 +17,7 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
     d.setDate(d.getDate() + 28)
     return d.toISOString().split('T')[0]
   })
+  const [projectZoek, setProjectZoek] = useState('')
   const [voorkeurMedewerker, setVoorkeurMedewerker] = useState('')
   const [toonWeekend, setToonWeekend] = useState(false)
   const [gebruikFlex, setGebruikFlex] = useState(false)
@@ -278,19 +279,46 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
           {/* STAP 1: Selecteer order + bereik */}
           {stap === 1 && (
             <div className="space-y-4">
-              {/* Project selectie */}
+              {/* Project selectie met zoekbalk */}
               <div>
                 <label className="block text-xs font-medium text-gray-500 mb-1">Project</label>
-                <select
-                  value={selectedProjectId}
-                  onChange={(e) => { setSelectedProjectId(e.target.value); setSelectedOrderId('') }}
-                  className="w-full border rounded-lg px-3 py-2.5 text-sm"
-                >
-                  <option value="">Kies project...</option>
-                  {projecten.filter(p => p.actief !== false).map(p => (
-                    <option key={p.id} value={p.id}>{p.emoji} {p.naam}</option>
-                  ))}
-                </select>
+                <input
+                  type="text"
+                  value={projectZoek}
+                  onChange={(e) => { setProjectZoek(e.target.value); if (selectedProjectId) { setSelectedProjectId(''); setSelectedOrderId('') } }}
+                  placeholder="🔍 Zoek project..."
+                  className="w-full border rounded-lg px-3 py-2.5 text-sm mb-1"
+                  autoFocus
+                />
+                <div className="space-y-0.5 max-h-48 overflow-y-auto border rounded-lg">
+                  {projecten
+                    .filter(p => p.actief !== false)
+                    .filter(p => {
+                      if (!projectZoek) return true
+                      const zoek = projectZoek.toLowerCase()
+                      return (p.naam || '').toLowerCase().includes(zoek) ||
+                             (p.klant || '').toLowerCase().includes(zoek) ||
+                             (p.project_nummer || '').toLowerCase().includes(zoek)
+                    })
+                    .map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => { setSelectedProjectId(p.id); setSelectedOrderId(''); setProjectZoek(p.naam || '') }}
+                        className={`w-full text-left px-3 py-2 text-sm flex justify-between items-center hover:bg-gray-50 ${selectedProjectId === p.id ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''}`}
+                      >
+                        <span>{p.emoji} {p.naam}</span>
+                        {p.klant && <span className="text-xs text-gray-400">{p.klant}</span>}
+                      </button>
+                    ))
+                  }
+                  {projecten.filter(p => p.actief !== false).filter(p => {
+                    if (!projectZoek) return true
+                    const zoek = projectZoek.toLowerCase()
+                    return (p.naam || '').toLowerCase().includes(zoek) || (p.klant || '').toLowerCase().includes(zoek) || (p.project_nummer || '').toLowerCase().includes(zoek)
+                  }).length === 0 && (
+                    <div className="p-3 text-sm text-gray-400 text-center">Geen projecten gevonden</div>
+                  )}
+                </div>
               </div>
 
               {/* Order selectie */}
