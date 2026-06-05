@@ -56,7 +56,7 @@ export default function App() {
 
       const { data: sjabloonItems } = await supabase.from('sjabloon_items').select('*')
 
-      const { data: medewerkersData } = await supabase.from('medewerkers').select('*').eq('actief', true).order('naam')
+      const { data: medewerkersData } = await supabase.from('medewerkers').select('*').eq('actief', true).order('volgorde').order('naam')
 
       const sjablonenMetItems = (sjablonenData || []).map(s => ({
         ...s,
