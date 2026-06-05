@@ -12,7 +12,13 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [startDatum, setStartDatum] = useState(new Date().toISOString().split('T')[0])
+  const [eindDatum, setEindDatum] = useState(() => {
+    const d = new Date()
+    d.setDate(d.getDate() + 28)
+    return d.toISOString().split('T')[0]
+  })
   const [voorkeurMedewerker, setVoorkeurMedewerker] = useState('')
+  const [toonWeekend, setToonWeekend] = useState(false) // ook za/zo inplannen?
 
   // Load orders for selected project
   useEffect(() => {
@@ -34,6 +40,20 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
     setSelectedOrder(order)
   }, [selectedOrderId, orders])
 
+  // Calculate werkdagen in range
+  const berekenWerkdagen = () => {
+    let count = 0
+    const d = new Date(startDatum + 'T12:00:00')
+    const eind = new Date(eindDatum + 'T12:00:00')
+    while (d <= eind) {
+      const dag = d.getDay()
+      if (toonWeekend || (dag !== 0 && dag !== 6)) count++
+      else if (dag === 6 && !toonWeekend) count++ // za altijd meetellen? nee, alleen als checkbox
+      d.setDate(d.getDate() + 1)
+    }
+    return count
+  }
+
   // Generate planning voorstel
   const genereerVoorstel = async () => {
     if (!selectedOrder) return
@@ -47,15 +67,12 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
         return
       }
 
-      // Load existing blokken from startDatum onwards (4 weeks lookahead)
-      const eindDatum = new Date(startDatum)
-      eindDatum.setDate(eindDatum.getDate() + 28)
-
+      // Load existing blokken within the date range
       const { data: bestaandeBlokken } = await supabase
         .from('planning_blokken')
         .select('*')
         .gte('datum', startDatum)
-        .lte('datum', eindDatum.toISOString().split('T')[0])
+        .lte('datum', eindDatum)
 
       // Build capacity map: { 'datum-medewerkerId': urenGepland }
       const bezetting = {}
@@ -69,17 +86,21 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
         ? medewerkers.filter(m => m.id === voorkeurMedewerker)
         : medewerkers.filter(m => m.actief)
 
-      // Generate blokken
+      // Generate blokken within the date range
       const nieuweBlokken = []
       let resterend = urenTePlannen
       let currentDate = new Date(startDatum + 'T12:00:00')
+      const eindDate = new Date(eindDatum + 'T12:00:00')
 
-      while (resterend > 0) {
+      while (resterend > 0 && currentDate <= eindDate) {
         const dag = currentDate.getDay()
 
-        // Skip zondag
-        if (dag !== 0) {
-          // Probeer medewerkers
+        // Skip zondag (en zaterdag als weekend niet aan staat)
+        const isWerkdag = dag >= 1 && dag <= 5
+        const isWeekend = dag === 0 || dag === 6
+        const planDezeDag = isWerkdag || (isWeekend && toonWeekend)
+
+        if (planDezeDag) {
           for (const mw of beschikbareMedewerkers) {
             if (resterend <= 0) break
             const maxUren = mw.uren_per_dag || 8
@@ -93,7 +114,7 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
               const isMargeDag = (bestaandeBlokken || []).some(b =>
                 b.datum === datum && b.medewerker_id === mw.id && b.is_marge
               )
-              if (isMargeDag) continue // Skip marge-dagen
+              if (isMargeDag) continue
 
               const uren = Math.min(vrij, resterend)
               nieuweBlokken.push({
@@ -105,17 +126,12 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
               bezetting[key] = gepland + uren
               resterend -= uren
 
-              // Als voorkeur-medewerker, vul hele dag eerst
               if (voorkeurMedewerker) break
             }
           }
         }
 
         currentDate.setDate(currentDate.getDate() + 1)
-
-        // Safety: max 60 dagen vooruit
-        const daysDiff = (currentDate - new Date(startDatum + 'T12:00:00')) / (1000 * 60 * 60 * 24)
-        if (daysDiff > 60) break
       }
 
       setVoorstel(nieuweBlokken)
@@ -164,6 +180,7 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
 
   const project = projecten.find(p => p.id === selectedProjectId)
   const totaalVoorstel = voorstel.reduce((sum, v) => sum + v.uren, 0)
+  const resterendNaVoorstel = (selectedOrder?.begrote_uren || 0) - totaalVoorstel
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -174,7 +191,7 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
           <div>
             <h3 className="text-lg font-bold text-gray-800">📅 Order inplannen</h3>
             <p className="text-sm text-gray-500 mt-0.5">
-              {stap === 1 && 'Selecteer een order om in te plannen'}
+              {stap === 1 && 'Selecteer een order en kies het bereik'}
               {stap === 2 && 'Bekijk en pas het voorstel aan'}
               {stap === 3 && 'Order is ingepland!'}
             </p>
@@ -185,7 +202,7 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5">
 
-          {/* STAP 1: Selecteer order */}
+          {/* STAP 1: Selecteer order + bereik */}
           {stap === 1 && (
             <div className="space-y-4">
               {/* Project selectie */}
@@ -223,26 +240,42 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
                 </div>
               )}
 
-              {/* Opties */}
+              {/* Bereik + opties */}
               {selectedOrder && (
                 <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 space-y-3">
                   <div className="flex justify-between">
                     <span className="text-sm font-medium text-blue-800">
                       {selectedOrder.naam}
                     </span>
-                    <span className="text-sm font-bold text-blue-700">{selectedOrder.begrote_uren || 0}u</span>
+                    <span className="text-sm font-bold text-blue-700">{selectedOrder.begrote_uren || 0}u te plannen</span>
+                  </div>
+
+                  {/* Datumbereik */}
+                  <div>
+                    <label className="block text-xs text-blue-600 mb-1 font-medium">📅 Bereik: inplannen tussen</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] text-gray-500 mb-0.5">Van</label>
+                        <input
+                          type="date"
+                          value={startDatum}
+                          onChange={(e) => setStartDatum(e.target.value)}
+                          className="w-full border rounded-lg px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-gray-500 mb-0.5">Tot en met</label>
+                        <input
+                          type="date"
+                          value={eindDatum}
+                          onChange={(e) => setEindDatum(e.target.value)}
+                          className="w-full border rounded-lg px-3 py-2 text-sm"
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs text-blue-600 mb-1">Starten vanaf</label>
-                      <input
-                        type="date"
-                        value={startDatum}
-                        onChange={(e) => setStartDatum(e.target.value)}
-                        className="w-full border rounded-lg px-3 py-2 text-sm"
-                      />
-                    </div>
                     <div>
                       <label className="block text-xs text-blue-600 mb-1">Voorkeur medewerker</label>
                       <select
@@ -255,6 +288,17 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
                           <option key={m.id} value={m.id}>{m.naam} {m.is_flex ? '(flex)' : ''}</option>
                         ))}
                       </select>
+                    </div>
+                    <div className="flex items-end pb-1">
+                      <label className="flex items-center gap-2 text-sm text-gray-600 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={toonWeekend}
+                          onChange={(e) => setToonWeekend(e.target.checked)}
+                          className="rounded border-gray-300 text-blue-600"
+                        />
+                        Ook weekend inplannen
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -275,38 +319,77 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
                 <span className="text-sm font-bold">{totaalVoorstel}u / {selectedOrder?.begrote_uren || 0}u</span>
               </div>
 
-              {totaalVoorstel < (selectedOrder?.begrote_uren || 0) && (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
-                  ⚠️ Niet alle uren konden ingepland worden. Er is {(selectedOrder?.begrote_uren || 0) - totaalVoorstel}u niet ingepland (onvoldoende capaciteit in de komende 60 dagen).
+              {/* Waarschuwing als niet alles past */}
+              {resterendNaVoorstel > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-800">
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg">⚠️</span>
+                    <div>
+                      <p className="font-medium">Niet alle uren passen in het bereik!</p>
+                      <p className="text-xs mt-1">
+                        <strong>{resterendNaVoorstel}u</strong> kon niet ingepland worden tussen {new Date(startDatum + 'T12:00:00').toLocaleDateString('nl-BE', { day: 'numeric', month: 'short' })} en {new Date(eindDatum + 'T12:00:00').toLocaleDateString('nl-BE', { day: 'numeric', month: 'short' })}.
+                      </p>
+                      <p className="text-xs mt-1 text-amber-600">Je kunt:</p>
+                      <ul className="text-xs mt-1 ml-4 list-disc space-y-0.5">
+                        <li>Het bereik verlengen (einddatum later zetten)</li>
+                        <li>Weekend inplannen aanzetten</li>
+                        <li>Nu bevestigen en de rest later apart inplannen</li>
+                      </ul>
+                      <div className="flex gap-2 mt-3">
+                        <button
+                          onClick={() => setStap(1)}
+                          className="px-3 py-1.5 bg-amber-100 text-amber-800 rounded-lg text-xs font-medium hover:bg-amber-200"
+                        >
+                          ◀ Bereik aanpassen
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              <div className="border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="text-left p-2 text-xs text-gray-500">Dag</th>
-                      <th className="text-left p-2 text-xs text-gray-500">Medewerker</th>
-                      <th className="text-right p-2 text-xs text-gray-500">Uren</th>
-                      <th className="w-8"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {voorstel.map((v, i) => (
-                      <tr key={i} className="border-t hover:bg-gray-50">
-                        <td className="p-2">
-                          {new Date(v.datum + 'T12:00:00').toLocaleDateString('nl-BE', { weekday: 'short', day: 'numeric', month: 'short' })}
-                        </td>
-                        <td className="p-2">{v.medewerker_naam}</td>
-                        <td className="p-2 text-right font-medium">{v.uren}u</td>
-                        <td className="p-2">
-                          <button onClick={() => verwijderUitVoorstel(i)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
-                        </td>
+              {voorstel.length > 0 && (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="text-left p-2 text-xs text-gray-500">Dag</th>
+                        <th className="text-left p-2 text-xs text-gray-500">Medewerker</th>
+                        <th className="text-right p-2 text-xs text-gray-500">Uren</th>
+                        <th className="w-8"></th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {voorstel.map((v, i) => (
+                        <tr key={i} className="border-t hover:bg-gray-50">
+                          <td className="p-2">
+                            {new Date(v.datum + 'T12:00:00').toLocaleDateString('nl-BE', { weekday: 'short', day: 'numeric', month: 'short' })}
+                          </td>
+                          <td className="p-2">{v.medewerker_naam}</td>
+                          <td className="p-2 text-right font-medium">{v.uren}u</td>
+                          <td className="p-2">
+                            <button onClick={() => verwijderUitVoorstel(i)} className="text-red-400 hover:text-red-600 text-xs">✕</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {voorstel.length === 0 && (
+                <div className="text-center py-8 text-gray-400 border-2 border-dashed rounded-lg">
+                  <div className="text-3xl mb-2">😕</div>
+                  <p className="font-medium">Geen capaciteit beschikbaar in dit bereik</p>
+                  <p className="text-xs mt-1">Probeer het bereik te verlengen of weekend aan te zetten.</p>
+                  <button
+                    onClick={() => setStap(1)}
+                    className="mt-3 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700"
+                  >
+                    ◀ Bereik aanpassen
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -321,6 +404,11 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
               <p className="text-xs text-gray-400 mt-2">
                 {voorstel.length > 0 && `${voorstel[0].datum} t/m ${voorstel[voorstel.length - 1].datum}`}
               </p>
+              {resterendNaVoorstel > 0 && (
+                <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700 inline-block">
+                  ⚠️ Let op: {resterendNaVoorstel}u is nog niet ingepland. Plan deze later apart in.
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -347,7 +435,7 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
                 disabled={saving || voorstel.length === 0}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 disabled:opacity-50"
               >
-                {saving ? 'Opslaan...' : `✅ Bevestig (${voorstel.length} blokken)`}
+                {saving ? 'Opslaan...' : `✅ Bevestig (${voorstel.length} blokken${resterendNaVoorstel > 0 ? `, ${resterendNaVoorstel}u resterend` : ''})`}
               </button>
             </>
           )}

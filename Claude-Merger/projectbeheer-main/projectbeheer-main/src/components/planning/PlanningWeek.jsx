@@ -28,18 +28,13 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
   const [loading, setLoading] = useState(true)
   const [dragState, setDragState] = useState(null)
   const [toastMsg, setToastMsg] = useState(null)
-  const [toonZaterdag, setToonZaterdag] = useState(true)
   const [aantalWeken, setAantalWeken] = useState(3)
 
-  // Build array of date strings for the visible range
-  const dagenPerWeek = toonZaterdag ? 6 : 5
+  // Build array of date strings for the visible range (altijd 7 dagen per week incl. weekend)
   const dagen = []
-  for (let i = 0; i < aantalWeken * dagenPerWeek; i++) {
+  for (let i = 0; i < aantalWeken * 7; i++) {
     const d = new Date(weekStart)
-    // Calculate: which week (0-based) and which day within that week
-    const weekIndex = Math.floor(i / dagenPerWeek)
-    const dagIndex = i % dagenPerWeek
-    d.setDate(d.getDate() + weekIndex * 7 + dagIndex)
+    d.setDate(d.getDate() + i)
     dagen.push(d.toISOString().split('T')[0])
   }
 
@@ -47,8 +42,14 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const startStr = dagen[0]
-      const eindStr = dagen[dagen.length - 1]
+      const dagArray = []
+      for (let i = 0; i < aantalWeken * 7; i++) {
+        const d = new Date(weekStart)
+        d.setDate(d.getDate() + i)
+        dagArray.push(d.toISOString().split('T')[0])
+      }
+      const startStr = dagArray[0]
+      const eindStr = dagArray[dagArray.length - 1]
 
       const { data: blokkenData, error: blokkenError } = await supabase
         .from('planning_blokken')
@@ -89,7 +90,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
       console.error('Onverwachte fout bij laden:', err)
     }
     setLoading(false)
-  }, [weekStart, toonZaterdag, aantalWeken])
+  }, [weekStart, aantalWeken])
 
   useEffect(() => {
     loadData()
@@ -223,16 +224,6 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
             ))}
           </div>
 
-          <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={toonZaterdag}
-              onChange={(e) => setToonZaterdag(e.target.checked)}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            Za
-          </label>
-
           {onOpenSpoed && (
             <button
               onClick={onOpenSpoed}
@@ -297,7 +288,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
               {dagen.map((datum, index) => {
                 const dagDate = new Date(datum + 'T12:00:00')
                 const isVandaag = datum === new Date().toISOString().split('T')[0]
-                const isZaterdag = dagDate.getDay() === 6
+                const isWeekend = dagDate.getDay() === 0 || dagDate.getDay() === 6
                 const isMaandag = dagDate.getDay() === 1
                 const dagLabel = dagNamen[dagDate.getDay()]
                 const dagNr = dagDate.getDate()
@@ -323,9 +314,9 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
                     <tr
                       className={`border-b ${
                         isVandaag
-                          ? 'bg-red-50/40'
-                          : isZaterdag
-                            ? 'bg-yellow-50/50'
+                          ? 'bg-red-50/50'
+                          : isWeekend
+                            ? 'bg-gray-200/60'
                             : 'hover:bg-gray-50/50'
                       }`}
                     >
@@ -339,8 +330,8 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
                         <div className={`text-sm ${
                           isVandaag
                             ? 'text-red-700'
-                            : isZaterdag
-                              ? 'text-amber-700'
+                            : isWeekend
+                              ? 'text-gray-500'
                               : 'text-gray-700'
                         }`}>
                           {dagLabel} {dagNr}
@@ -348,8 +339,8 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
                         {isVandaag && (
                           <div className="text-[10px] text-red-500 font-semibold">Vandaag</div>
                         )}
-                        {isZaterdag && (
-                          <div className="text-[10px] text-amber-500">Weekend</div>
+                        {isWeekend && (
+                          <div className="text-[10px] text-gray-400">Weekend</div>
                         )}
                       </td>
 
