@@ -13,6 +13,10 @@ import { Tijdsregistratie } from './components/tijdsregistratie/Tijdsregistratie
 import { TransportRegistratie } from './components/transport/TransportRegistratie'
 import { BibliotheekBeheer } from './components/bibliotheek/BibliotheekBeheer'
 import { SjablonenBeheer } from './components/sjablonen/SjablonenBeheer'
+import { PlanningWeek } from './components/planning/PlanningWeek'
+import { PlanningTijdlijn } from './components/planning/PlanningTijdlijn'
+import { PlanningInplannen } from './components/planning/PlanningInplannen'
+import { PlanningSpoed } from './components/planning/PlanningSpoed'
 
 // =====================================================
 // MAIN APP
@@ -80,6 +84,11 @@ export default function App() {
   }, [loadData])
 
   const [showProjectModal, setShowProjectModal] = useState(false)
+  const [showInplannen, setShowInplannen] = useState(false)
+  const [showSpoed, setShowSpoed] = useState(false)
+  const [planningRefreshKey, setPlanningRefreshKey] = useState(0)
+
+  const handlePlanningRefresh = () => setPlanningRefreshKey(k => k + 1)
 
   const handleNewProject = (created) => {
     setProjecten([created, ...projecten])
@@ -132,6 +141,8 @@ export default function App() {
               {[
                 { id: 'projecten', icon: '📁', label: 'Projecten' },
                 { id: 'kanban', icon: '📋', label: 'Kanban' },
+                { id: 'planning', icon: '📅', label: 'Planning' },
+                { id: 'tijdlijn', icon: '📊', label: 'Tijdlijn' },
                 { id: 'tijdsregistratie', icon: '⏱️', label: 'Uren' },
                 { id: 'transport', icon: '🚚', label: 'Transport' },
                 { id: 'bibliotheek', icon: '📚', label: 'Bibliotheek' },
@@ -163,7 +174,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className={`mx-auto px-6 py-6 ${view === 'kanban' && !selectedProject ? 'max-w-full' : 'max-w-[1600px]'}`}>
+      <main className={`mx-auto px-6 py-6 ${(view === 'kanban' || view === 'planning' || view === 'tijdlijn') && !selectedProject ? 'max-w-full' : 'max-w-[1600px]'}`}>
         {selectedProject ? (
           <ProjectDetail
             project={selectedProject}
@@ -209,6 +220,22 @@ export default function App() {
               )
             })()}
             {view === 'kanban' && <KanbanBoard projecten={projecten} />}
+            {view === 'planning' && (
+              <PlanningWeek
+                key={planningRefreshKey}
+                projecten={projecten}
+                medewerkers={medewerkers}
+                onOpenInplannen={() => setShowInplannen(true)}
+                onOpenSpoed={() => setShowSpoed(true)}
+              />
+            )}
+            {view === 'tijdlijn' && (
+              <PlanningTijdlijn
+                key={planningRefreshKey}
+                projecten={projecten}
+                medewerkers={medewerkers}
+              />
+            )}
             {view === 'tijdsregistratie' && <Tijdsregistratie projecten={projecten} medewerkers={medewerkers} onRefresh={loadData} />}
             {view === 'transport' && <TransportRegistratie projecten={projecten} />}
             {view === 'bibliotheek' && <BibliotheekBeheer bibliotheek={bibliotheek} onRefresh={loadData} />}
@@ -221,6 +248,24 @@ export default function App() {
         <ProjectAanmaakModal
           onClose={() => setShowProjectModal(false)}
           onCreate={handleNewProject}
+        />
+      )}
+
+      {showInplannen && (
+        <PlanningInplannen
+          projecten={projecten}
+          medewerkers={medewerkers}
+          onClose={() => setShowInplannen(false)}
+          onGepland={handlePlanningRefresh}
+        />
+      )}
+
+      {showSpoed && (
+        <PlanningSpoed
+          projecten={projecten}
+          medewerkers={medewerkers}
+          onClose={() => setShowSpoed(false)}
+          onGepland={handlePlanningRefresh}
         />
       )}
     </div>

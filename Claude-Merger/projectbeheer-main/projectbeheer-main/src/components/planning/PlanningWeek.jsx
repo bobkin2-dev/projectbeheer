@@ -1,0 +1,401 @@
+import React, { useState, useEffect, useCallback } from 'react'
+import { supabase } from '../../supabase'
+import { PlanningBlok, DropZone } from './PlanningBlok'
+import { Toast } from '../ui/Toast'
+import { LoadingSpinner } from '../ui/LoadingSpinner'
+
+const getMonday = (date) => {
+  const d = new Date(date)
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+  d.setDate(diff)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
+const getWeekNumber = (d) => {
+  const date = new Date(d)
+  date.setHours(0, 0, 0, 0)
+  date.setDate(date.getDate() + 3 - (date.getDay() + 6) % 7)
+  const week1 = new Date(date.getFullYear(), 0, 4)
+  return 1 + Math.round(((date - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7)
+}
+
+export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSpoed }) => {
+  const [weekStart, setWeekStart] = useState(() => getMonday(new Date()))
+  const [blokken, setBlokken] = useState([])
+  const [orders, setOrders] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [dragState, setDragState] = useState(null)
+  const [toastMsg, setToastMsg] = useState(null)
+  const [toonZaterdag, setToonZaterdag] = useState(true)
+
+  // Build array of date strings for the current week
+  const dagen = []
+  for (let i = 0; i < (toonZaterdag ? 6 : 5); i++) {
+    const d = new Date(weekStart)
+    d.setDate(d.getDate() + i)
+    dagen.push(d.toISOString().split('T')[0])
+  }
+
+  // Load planning data when weekStart or toonZaterdag changes
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const dagArray = []
+      for (let i = 0; i < (toonZaterdag ? 6 : 5); i++) {
+        const d = new Date(weekStart)
+        d.setDate(d.getDate() + i)
+        dagArray.push(d.toISOString().split('T')[0])
+      }
+
+      const { data: blokkenData, error: blokkenError } = await supabase
+        .from('planning_blokken')
+        .select('*')
+        .gte('datum', dagArray[0])
+        .lte('datum', dagArray[dagArray.length - 1])
+        .order('volgorde')
+
+      if (blokkenError) {
+        console.error('Fout bij laden blokken:', blokkenError)
+        setBlokken([])
+        setOrders({})
+        setLoading(false)
+        return
+      }
+
+      setBlokken(blokkenData || [])
+
+      // Load related orders
+      const orderIds = [...new Set((blokkenData || []).filter(b => b.order_id).map(b => b.order_id))]
+      if (orderIds.length > 0) {
+        const { data: ordersData, error: ordersError } = await supabase
+          .from('orders')
+          .select('*, projecten(*)')
+          .in('id', orderIds)
+
+        if (!ordersError && ordersData) {
+          const ordersMap = {}
+          ordersData.forEach(o => { ordersMap[o.id] = o })
+          setOrders(ordersMap)
+        } else {
+          setOrders({})
+        }
+      } else {
+        setOrders({})
+      }
+    } catch (err) {
+      console.error('Onverwachte fout bij laden:', err)
+    }
+    setLoading(false)
+  }, [weekStart, toonZaterdag])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  // Week navigation
+  const prevWeek = () => {
+    const d = new Date(weekStart)
+    d.setDate(d.getDate() - 7)
+    setWeekStart(d)
+  }
+
+  const nextWeek = () => {
+    const d = new Date(weekStart)
+    d.setDate(d.getDate() + 7)
+    setWeekStart(d)
+  }
+
+  const goToday = () => setWeekStart(getMonday(new Date()))
+
+  // Drag & Drop handlers
+  const handleDrop = async (blokId, nieuweMedewerkerId, nieuweDatum) => {
+    try {
+      const { error } = await supabase
+        .from('planning_blokken')
+        .update({
+          medewerker_id: nieuweMedewerkerId,
+          datum: nieuweDatum
+        })
+        .eq('id', blokId)
+
+      if (error) {
+        console.error('Fout bij verplaatsen blok:', error)
+        setToastMsg('Fout bij verplaatsen!')
+        return
+      }
+
+      setBlokken(prev =>
+        prev.map(b =>
+          b.id === blokId
+            ? { ...b, medewerker_id: nieuweMedewerkerId, datum: nieuweDatum }
+            : b
+        )
+      )
+      setToastMsg('Blok verplaatst!')
+    } catch (err) {
+      console.error('Onverwachte fout bij verplaatsen:', err)
+    }
+  }
+
+  const handleRemove = async (blokId) => {
+    try {
+      const { error } = await supabase
+        .from('planning_blokken')
+        .delete()
+        .eq('id', blokId)
+
+      if (error) {
+        console.error('Fout bij verwijderen blok:', error)
+        setToastMsg('Fout bij verwijderen!')
+        return
+      }
+
+      setBlokken(prev => prev.filter(b => b.id !== blokId))
+      setToastMsg('Blok verwijderd')
+    } catch (err) {
+      console.error('Onverwachte fout bij verwijderen:', err)
+    }
+  }
+
+  // Week label
+  const weekNr = getWeekNumber(weekStart)
+  const maandLabel = new Date(weekStart).toLocaleDateString('nl-BE', { month: 'long', year: 'numeric' })
+
+  const dagNamen = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za']
+
+  if (loading) return <LoadingSpinner />
+
+  return (
+    <div>
+      {/* Controls bar */}
+      <div className="bg-white rounded-xl border shadow-sm p-4 mb-4 flex justify-between items-center flex-wrap gap-3">
+        {/* Left: week navigation */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={prevWeek}
+            className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            &#9664; Vorige week
+          </button>
+          <button
+            onClick={goToday}
+            className="px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+          >
+            Vandaag
+          </button>
+          <button
+            onClick={nextWeek}
+            className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            Volgende week &#9654;
+          </button>
+        </div>
+
+        {/* Center: week label */}
+        <div className="text-center">
+          <span className="text-lg font-bold text-gray-800">Week {weekNr}</span>
+          <span className="text-gray-400 mx-2">&middot;</span>
+          <span className="text-sm text-gray-500 capitalize">{maandLabel}</span>
+        </div>
+
+        {/* Right: options & actions */}
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={toonZaterdag}
+              onChange={(e) => setToonZaterdag(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            Za tonen
+          </label>
+          {onOpenSpoed && (
+            <button
+              onClick={onOpenSpoed}
+              className="px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
+            >
+              &#x1F6A8; + Spoed
+            </button>
+          )}
+          {onOpenInplannen && (
+            <button
+              onClick={onOpenInplannen}
+              className="px-3 py-1.5 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              + Inplannen
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Planning grid */}
+      <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: '900px', tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '100px' }} />
+              <col style={{ width: '40px' }} />
+              {medewerkers.map(m => (
+                <col key={m.id} />
+              ))}
+            </colgroup>
+
+            {/* Header: medewerker avatars */}
+            <thead className="sticky top-0 z-20">
+              <tr className="bg-gray-50 border-b">
+                <th className="p-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Dag</th>
+                <th className="p-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Cap.</th>
+                {medewerkers.map(m => (
+                  <th key={m.id} className="p-2 text-center border-l">
+                    <div className="flex flex-col items-center gap-1">
+                      <div
+                        className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold ${
+                          m.is_flex
+                            ? 'border-2 border-dashed border-blue-300 bg-blue-50 text-blue-400'
+                            : 'bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        {m.naam.charAt(0).toUpperCase()}
+                      </div>
+                      <div className={`text-xs font-semibold ${m.is_flex ? 'text-blue-600' : 'text-gray-700'}`}>
+                        {m.naam}
+                      </div>
+                      <div className="text-[10px] text-gray-400">
+                        {m.is_flex ? 'Flex · ' : ''}{m.uren_per_dag || 8}u/dag
+                      </div>
+                    </div>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody>
+              {dagen.map(datum => {
+                const dagDate = new Date(datum + 'T12:00:00')
+                const isVandaag = datum === new Date().toISOString().split('T')[0]
+                const isZaterdag = dagDate.getDay() === 6
+                const dagLabel = dagNamen[dagDate.getDay()]
+                const dagNr = dagDate.getDate()
+
+                // Totals for this day
+                const dagBlokken = blokken.filter(b => b.datum === datum)
+                const dagTotaal = dagBlokken.reduce((sum, b) => sum + (b.uren || 0), 0)
+                const dagMax = medewerkers.reduce((sum, m) => sum + (m.uren_per_dag || 8), 0)
+
+                return (
+                  <tr
+                    key={datum}
+                    className={`border-b ${
+                      isVandaag
+                        ? 'bg-red-50/40'
+                        : isZaterdag
+                          ? 'bg-yellow-50/50'
+                          : 'hover:bg-gray-50/50'
+                    }`}
+                  >
+                    {/* Day label */}
+                    <td className="p-2 font-medium">
+                      <div className={`text-sm ${
+                        isVandaag
+                          ? 'text-red-700'
+                          : isZaterdag
+                            ? 'text-amber-700'
+                            : 'text-gray-700'
+                      }`}>
+                        {dagLabel} {dagNr}
+                      </div>
+                      {isVandaag && (
+                        <div className="text-[10px] text-red-500 font-semibold">Vandaag</div>
+                      )}
+                      {isZaterdag && (
+                        <div className="text-[10px] text-amber-500">Weekend</div>
+                      )}
+                    </td>
+
+                    {/* Capacity indicator */}
+                    <td className="p-1 text-center text-[10px] text-gray-400 font-mono">
+                      {dagTotaal}<span className="text-gray-300">/{dagMax}</span>
+                    </td>
+
+                    {/* Cell per medewerker */}
+                    {medewerkers.map(medewerker => {
+                      const celBlokken = blokken.filter(
+                        b => b.medewerker_id === medewerker.id && b.datum === datum
+                      )
+                      const urenGepland = celBlokken.reduce((sum, b) => sum + (b.uren || 0), 0)
+                      const isDragOver =
+                        dragState?.overCell?.medewerker_id === medewerker.id &&
+                        dragState?.overCell?.datum === datum
+
+                      return (
+                        <td
+                          key={medewerker.id}
+                          className={`p-1.5 border-l align-top ${medewerker.is_flex ? 'bg-blue-50/30' : ''}`}
+                          onDragOver={(e) => {
+                            e.preventDefault()
+                            setDragState(prev => ({
+                              ...prev,
+                              overCell: { medewerker_id: medewerker.id, datum }
+                            }))
+                          }}
+                          onDragLeave={() => {
+                            setDragState(prev => ({ ...prev, overCell: null }))
+                          }}
+                          onDrop={(e) => {
+                            e.preventDefault()
+                            const blokId = e.dataTransfer.getData('blokId')
+                            if (blokId) handleDrop(blokId, medewerker.id, datum)
+                            setDragState(null)
+                          }}
+                        >
+                          <div
+                            className={`min-h-[60px] space-y-1 ${
+                              isDragOver
+                                ? 'bg-blue-100 rounded-lg ring-2 ring-blue-400 ring-dashed p-1'
+                                : ''
+                            }`}
+                          >
+                            {celBlokken.map(blok => {
+                              const order = blok.order_id ? orders[blok.order_id] : null
+                              const project =
+                                order?.projecten ||
+                                projecten.find(p => p.id === order?.project_id)
+
+                              return (
+                                <PlanningBlok
+                                  key={blok.id}
+                                  blok={blok}
+                                  project={project}
+                                  order={order}
+                                  onDragStart={() =>
+                                    setDragState({ blokId: blok.id, overCell: null })
+                                  }
+                                  onRemove={handleRemove}
+                                />
+                              )
+                            })}
+
+                            {/* Drop zone for remaining capacity */}
+                            <DropZone
+                              medewerkerUrenPerDag={medewerker.uren_per_dag || 8}
+                              urenGepland={urenGepland}
+                              isDragOver={isDragOver}
+                            />
+                          </div>
+                        </td>
+                      )
+                    })}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {toastMsg && <Toast message={toastMsg} onDone={() => setToastMsg(null)} />}
+    </div>
+  )
+}
