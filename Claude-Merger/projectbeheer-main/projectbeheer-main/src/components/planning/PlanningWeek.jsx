@@ -29,31 +29,32 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
   const [dragState, setDragState] = useState(null)
   const [toastMsg, setToastMsg] = useState(null)
   const [toonZaterdag, setToonZaterdag] = useState(true)
+  const [aantalWeken, setAantalWeken] = useState(3)
 
-  // Build array of date strings for the current week
+  // Build array of date strings for the visible range
+  const dagenPerWeek = toonZaterdag ? 6 : 5
   const dagen = []
-  for (let i = 0; i < (toonZaterdag ? 6 : 5); i++) {
+  for (let i = 0; i < aantalWeken * dagenPerWeek; i++) {
     const d = new Date(weekStart)
-    d.setDate(d.getDate() + i)
+    // Calculate: which week (0-based) and which day within that week
+    const weekIndex = Math.floor(i / dagenPerWeek)
+    const dagIndex = i % dagenPerWeek
+    d.setDate(d.getDate() + weekIndex * 7 + dagIndex)
     dagen.push(d.toISOString().split('T')[0])
   }
 
-  // Load planning data when weekStart or toonZaterdag changes
+  // Load planning data
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const dagArray = []
-      for (let i = 0; i < (toonZaterdag ? 6 : 5); i++) {
-        const d = new Date(weekStart)
-        d.setDate(d.getDate() + i)
-        dagArray.push(d.toISOString().split('T')[0])
-      }
+      const startStr = dagen[0]
+      const eindStr = dagen[dagen.length - 1]
 
       const { data: blokkenData, error: blokkenError } = await supabase
         .from('planning_blokken')
         .select('*')
-        .gte('datum', dagArray[0])
-        .lte('datum', dagArray[dagArray.length - 1])
+        .gte('datum', startStr)
+        .lte('datum', eindStr)
         .order('volgorde')
 
       if (blokkenError) {
@@ -88,7 +89,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
       console.error('Onverwachte fout bij laden:', err)
     }
     setLoading(false)
-  }, [weekStart, toonZaterdag])
+  }, [weekStart, toonZaterdag, aantalWeken])
 
   useEffect(() => {
     loadData()
@@ -159,9 +160,12 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
     }
   }
 
-  // Week label
+  // Labels
   const weekNr = getWeekNumber(weekStart)
-  const maandLabel = new Date(weekStart).toLocaleDateString('nl-BE', { month: 'long', year: 'numeric' })
+  const eindDate = new Date(weekStart)
+  eindDate.setDate(eindDate.getDate() + (aantalWeken * 7) - 1)
+  const startLabel = new Date(weekStart).toLocaleDateString('nl-BE', { day: 'numeric', month: 'short' })
+  const eindLabel = eindDate.toLocaleDateString('nl-BE', { day: 'numeric', month: 'short', year: 'numeric' })
 
   const dagNamen = ['Zo', 'Ma', 'Di', 'Wo', 'Do', 'Vr', 'Za']
 
@@ -177,7 +181,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
             onClick={prevWeek}
             className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
           >
-            &#9664; Vorige week
+            &#9664; Vorige
           </button>
           <button
             onClick={goToday}
@@ -189,19 +193,36 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
             onClick={nextWeek}
             className="px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
           >
-            Volgende week &#9654;
+            Volgende &#9654;
           </button>
         </div>
 
         {/* Center: week label */}
         <div className="text-center">
-          <span className="text-lg font-bold text-gray-800">Week {weekNr}</span>
+          <span className="text-lg font-bold text-gray-800">Week {weekNr}{aantalWeken > 1 ? `–${getWeekNumber(eindDate)}` : ''}</span>
           <span className="text-gray-400 mx-2">&middot;</span>
-          <span className="text-sm text-gray-500 capitalize">{maandLabel}</span>
+          <span className="text-sm text-gray-500">{startLabel} — {eindLabel}</span>
         </div>
 
         {/* Right: options & actions */}
         <div className="flex items-center gap-3">
+          {/* Aantal weken selector */}
+          <div className="flex bg-gray-100 p-0.5 rounded-lg">
+            {[1, 2, 3].map(n => (
+              <button
+                key={n}
+                onClick={() => setAantalWeken(n)}
+                className={`px-2.5 py-1 text-xs font-medium rounded-md transition-all ${
+                  aantalWeken === n
+                    ? 'bg-white text-blue-700 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {n}w
+              </button>
+            ))}
+          </div>
+
           <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -209,14 +230,15 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
               onChange={(e) => setToonZaterdag(e.target.checked)}
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            Za tonen
+            Za
           </label>
+
           {onOpenSpoed && (
             <button
               onClick={onOpenSpoed}
               className="px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors"
             >
-              &#x1F6A8; + Spoed
+              🚨 Spoed
             </button>
           )}
           {onOpenInplannen && (
@@ -272,12 +294,17 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
             </thead>
 
             <tbody>
-              {dagen.map(datum => {
+              {dagen.map((datum, index) => {
                 const dagDate = new Date(datum + 'T12:00:00')
                 const isVandaag = datum === new Date().toISOString().split('T')[0]
                 const isZaterdag = dagDate.getDay() === 6
+                const isMaandag = dagDate.getDay() === 1
                 const dagLabel = dagNamen[dagDate.getDay()]
                 const dagNr = dagDate.getDate()
+                const dagWeekNr = getWeekNumber(dagDate)
+
+                // Is this the first day of a new week (not the very first row)?
+                const isNieuweWeek = isMaandag && index > 0
 
                 // Totals for this day
                 const dagBlokken = blokken.filter(b => b.datum === datum)
@@ -285,109 +312,122 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
                 const dagMax = medewerkers.reduce((sum, m) => sum + (m.uren_per_dag || 8), 0)
 
                 return (
-                  <tr
-                    key={datum}
-                    className={`border-b ${
-                      isVandaag
-                        ? 'bg-red-50/40'
-                        : isZaterdag
-                          ? 'bg-yellow-50/50'
-                          : 'hover:bg-gray-50/50'
-                    }`}
-                  >
-                    {/* Day label */}
-                    <td className="p-2 font-medium">
-                      <div className={`text-sm ${
+                  <React.Fragment key={datum}>
+                    {/* Week separator */}
+                    {isNieuweWeek && (
+                      <tr>
+                        <td colSpan={2 + medewerkers.length} className="bg-gray-200 h-[2px] p-0"></td>
+                      </tr>
+                    )}
+
+                    <tr
+                      className={`border-b ${
                         isVandaag
-                          ? 'text-red-700'
+                          ? 'bg-red-50/40'
                           : isZaterdag
-                            ? 'text-amber-700'
-                            : 'text-gray-700'
-                      }`}>
-                        {dagLabel} {dagNr}
-                      </div>
-                      {isVandaag && (
-                        <div className="text-[10px] text-red-500 font-semibold">Vandaag</div>
-                      )}
-                      {isZaterdag && (
-                        <div className="text-[10px] text-amber-500">Weekend</div>
-                      )}
-                    </td>
-
-                    {/* Capacity indicator */}
-                    <td className="p-1 text-center text-[10px] text-gray-400 font-mono">
-                      {dagTotaal}<span className="text-gray-300">/{dagMax}</span>
-                    </td>
-
-                    {/* Cell per medewerker */}
-                    {medewerkers.map(medewerker => {
-                      const celBlokken = blokken.filter(
-                        b => b.medewerker_id === medewerker.id && b.datum === datum
-                      )
-                      const urenGepland = celBlokken.reduce((sum, b) => sum + (b.uren || 0), 0)
-                      const isDragOver =
-                        dragState?.overCell?.medewerker_id === medewerker.id &&
-                        dragState?.overCell?.datum === datum
-
-                      return (
-                        <td
-                          key={medewerker.id}
-                          className={`p-1.5 border-l align-top ${medewerker.is_flex ? 'bg-blue-50/30' : ''}`}
-                          onDragOver={(e) => {
-                            e.preventDefault()
-                            setDragState(prev => ({
-                              ...prev,
-                              overCell: { medewerker_id: medewerker.id, datum }
-                            }))
-                          }}
-                          onDragLeave={() => {
-                            setDragState(prev => ({ ...prev, overCell: null }))
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault()
-                            const blokId = e.dataTransfer.getData('blokId')
-                            if (blokId) handleDrop(blokId, medewerker.id, datum)
-                            setDragState(null)
-                          }}
-                        >
-                          <div
-                            className={`min-h-[60px] space-y-1 ${
-                              isDragOver
-                                ? 'bg-blue-100 rounded-lg ring-2 ring-blue-400 ring-dashed p-1'
-                                : ''
-                            }`}
-                          >
-                            {celBlokken.map(blok => {
-                              const order = blok.order_id ? orders[blok.order_id] : null
-                              const project =
-                                order?.projecten ||
-                                projecten.find(p => p.id === order?.project_id)
-
-                              return (
-                                <PlanningBlok
-                                  key={blok.id}
-                                  blok={blok}
-                                  project={project}
-                                  order={order}
-                                  onDragStart={() =>
-                                    setDragState({ blokId: blok.id, overCell: null })
-                                  }
-                                  onRemove={handleRemove}
-                                />
-                              )
-                            })}
-
-                            {/* Drop zone for remaining capacity */}
-                            <DropZone
-                              medewerkerUrenPerDag={medewerker.uren_per_dag || 8}
-                              urenGepland={urenGepland}
-                              isDragOver={isDragOver}
-                            />
+                            ? 'bg-yellow-50/50'
+                            : 'hover:bg-gray-50/50'
+                      }`}
+                    >
+                      {/* Day label */}
+                      <td className="p-2 font-medium">
+                        {isMaandag && (
+                          <div className="text-[9px] text-blue-600 font-bold uppercase tracking-wider mb-0.5">
+                            Wk {dagWeekNr}
                           </div>
-                        </td>
-                      )
-                    })}
-                  </tr>
+                        )}
+                        <div className={`text-sm ${
+                          isVandaag
+                            ? 'text-red-700'
+                            : isZaterdag
+                              ? 'text-amber-700'
+                              : 'text-gray-700'
+                        }`}>
+                          {dagLabel} {dagNr}
+                        </div>
+                        {isVandaag && (
+                          <div className="text-[10px] text-red-500 font-semibold">Vandaag</div>
+                        )}
+                        {isZaterdag && (
+                          <div className="text-[10px] text-amber-500">Weekend</div>
+                        )}
+                      </td>
+
+                      {/* Capacity indicator */}
+                      <td className="p-1 text-center text-[10px] text-gray-400 font-mono">
+                        {dagTotaal}<span className="text-gray-300">/{dagMax}</span>
+                      </td>
+
+                      {/* Cell per medewerker */}
+                      {medewerkers.map(medewerker => {
+                        const celBlokken = blokken.filter(
+                          b => b.medewerker_id === medewerker.id && b.datum === datum
+                        )
+                        const urenGepland = celBlokken.reduce((sum, b) => sum + (b.uren || 0), 0)
+                        const isDragOver =
+                          dragState?.overCell?.medewerker_id === medewerker.id &&
+                          dragState?.overCell?.datum === datum
+
+                        return (
+                          <td
+                            key={medewerker.id}
+                            className={`p-1.5 border-l align-top ${medewerker.is_flex ? 'bg-blue-50/30' : ''}`}
+                            onDragOver={(e) => {
+                              e.preventDefault()
+                              setDragState(prev => ({
+                                ...prev,
+                                overCell: { medewerker_id: medewerker.id, datum }
+                              }))
+                            }}
+                            onDragLeave={() => {
+                              setDragState(prev => ({ ...prev, overCell: null }))
+                            }}
+                            onDrop={(e) => {
+                              e.preventDefault()
+                              const blokId = e.dataTransfer.getData('blokId')
+                              if (blokId) handleDrop(blokId, medewerker.id, datum)
+                              setDragState(null)
+                            }}
+                          >
+                            <div
+                              className={`min-h-[50px] space-y-1 ${
+                                isDragOver
+                                  ? 'bg-blue-100 rounded-lg ring-2 ring-blue-400 ring-dashed p-1'
+                                  : ''
+                              }`}
+                            >
+                              {celBlokken.map(blok => {
+                                const order = blok.order_id ? orders[blok.order_id] : null
+                                const project =
+                                  order?.projecten ||
+                                  projecten.find(p => p.id === order?.project_id)
+
+                                return (
+                                  <PlanningBlok
+                                    key={blok.id}
+                                    blok={blok}
+                                    project={project}
+                                    order={order}
+                                    onDragStart={() =>
+                                      setDragState({ blokId: blok.id, overCell: null })
+                                    }
+                                    onRemove={handleRemove}
+                                  />
+                                )
+                              })}
+
+                              {/* Drop zone for remaining capacity */}
+                              <DropZone
+                                medewerkerUrenPerDag={medewerker.uren_per_dag || 8}
+                                urenGepland={urenGepland}
+                                isDragOver={isDragOver}
+                              />
+                            </div>
+                          </td>
+                        )
+                      })}
+                    </tr>
+                  </React.Fragment>
                 )
               })}
             </tbody>
