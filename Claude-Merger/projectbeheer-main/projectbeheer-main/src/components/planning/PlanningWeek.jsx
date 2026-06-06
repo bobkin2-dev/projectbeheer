@@ -21,7 +21,7 @@ const getWeekNumber = (d) => {
   return 1 + Math.round(((date - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7)
 }
 
-export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSpoed }) => {
+export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSpoed, onMedewerkerVolgorde }) => {
   const [weekStart, setWeekStart] = useState(() => getMonday(new Date()))
   const [blokken, setBlokken] = useState([])
   const [orders, setOrders] = useState({})
@@ -29,6 +29,31 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
   const [dragState, setDragState] = useState(null)
   const [toastMsg, setToastMsg] = useState(null)
   const [aantalWeken, setAantalWeken] = useState(3)
+
+  // Medewerker volgorde aanpassen
+  const verplaatsMedewerker = async (mwId, richting) => {
+    const idx = medewerkers.findIndex(m => m.id === mwId)
+    if (idx < 0) return
+    const nieuweIdx = idx + richting
+    if (nieuweIdx < 0 || nieuweIdx >= medewerkers.length) return
+
+    // Swap volgorde in DB
+    const mwA = medewerkers[idx]
+    const mwB = medewerkers[nieuweIdx]
+    const volgordeA = mwA.volgorde ?? idx
+    const volgordeB = mwB.volgorde ?? nieuweIdx
+
+    try {
+      await Promise.all([
+        supabase.from('medewerkers').update({ volgorde: volgordeB }).eq('id', mwA.id),
+        supabase.from('medewerkers').update({ volgorde: volgordeA }).eq('id', mwB.id),
+      ])
+      onMedewerkerVolgorde?.() // refresh in parent
+      setToastMsg(`${mwA.naam} ${richting < 0 ? '◀' : '▶'} ${mwB.naam}`)
+    } catch (e) {
+      console.error('Fout bij volgorde:', e)
+    }
+  }
 
   // Build array of date strings for the visible range (altijd 7 dagen per week incl. weekend)
   const dagen = []
@@ -260,7 +285,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
               <tr className="bg-gray-50 border-b shadow-sm">
                 <th className="p-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Dag</th>
                 <th className="p-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Cap.</th>
-                {medewerkers.map(m => (
+                {medewerkers.map((m, mIdx) => (
                   <th key={m.id} className="p-2 text-center border-l">
                     <div className="flex flex-col items-center gap-1">
                       <div
@@ -277,6 +302,21 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
                       </div>
                       <div className="text-[10px] text-gray-400">
                         {m.is_flex ? 'Flex · ' : ''}{m.uren_per_dag || 8}u/dag
+                      </div>
+                      {/* Volgorde knoppen */}
+                      <div className="flex gap-0.5">
+                        <button
+                          onClick={() => verplaatsMedewerker(m.id, -1)}
+                          disabled={mIdx === 0}
+                          className="px-1.5 py-0.5 text-[10px] rounded bg-gray-100 text-gray-500 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-default"
+                          title="Naar links"
+                        >◀</button>
+                        <button
+                          onClick={() => verplaatsMedewerker(m.id, 1)}
+                          disabled={mIdx === medewerkers.length - 1}
+                          className="px-1.5 py-0.5 text-[10px] rounded bg-gray-100 text-gray-500 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-default"
+                          title="Naar rechts"
+                        >▶</button>
                       </div>
                     </div>
                   </th>

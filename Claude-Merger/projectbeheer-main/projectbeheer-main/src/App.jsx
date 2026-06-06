@@ -245,6 +245,7 @@ export default function App() {
                 medewerkers={medewerkers}
                 onOpenInplannen={() => setShowInplannen(true)}
                 onOpenSpoed={() => setShowSpoed(true)}
+                onMedewerkerVolgorde={loadData}
               />
             )}
             {view === 'tijdlijn' && (
