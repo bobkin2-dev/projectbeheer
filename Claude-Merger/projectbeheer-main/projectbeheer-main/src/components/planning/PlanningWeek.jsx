@@ -270,8 +270,8 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
         </div>
       </div>
 
-      {/* Planning grid — overflow-x scroll maar sticky header werkt via page scroll */}
-      <div className="bg-white rounded-xl border shadow-sm">
+      {/* Sticky medewerker header — los van de tabel zodat sticky werkt bij page scroll */}
+      <div className="sticky top-0 z-20 bg-gray-50 border border-b-0 rounded-t-xl shadow-sm" style={{ minWidth: '900px' }}>
         <div className="overflow-x-auto">
           <table className="w-full" style={{ minWidth: '900px', tableLayout: 'fixed' }}>
             <colgroup>
@@ -281,10 +281,8 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
                 <col key={m.id} />
               ))}
             </colgroup>
-
-            {/* Header: medewerker avatars — sticky bij scrollen */}
-            <thead className="sticky top-0 z-20">
-              <tr className="bg-gray-50 border-b shadow-sm">
+            <thead>
+              <tr className="bg-gray-50">
                 <th className="p-2 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Dag</th>
                 <th className="p-2 text-center text-xs font-semibold text-gray-500 uppercase tracking-wider">Cap.</th>
                 {medewerkers.map((m, mIdx) => (
@@ -325,7 +323,21 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
                 ))}
               </tr>
             </thead>
+          </table>
+        </div>
+      </div>
 
+      {/* Planning grid body */}
+      <div className="bg-white border border-t-0 rounded-b-xl">
+        <div className="overflow-x-auto">
+          <table className="w-full" style={{ minWidth: '900px', tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: '100px' }} />
+              <col style={{ width: '40px' }} />
+              {medewerkers.map(m => (
+                <col key={m.id} />
+              ))}
+            </colgroup>
             <tbody>
               {dagen.map((datum, index) => {
                 const dagDate = new Date(datum + 'T12:00:00')
