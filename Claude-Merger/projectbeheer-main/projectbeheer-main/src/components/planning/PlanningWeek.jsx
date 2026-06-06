@@ -445,6 +445,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
                                       setDragState({ blokId: blok.id, overCell: null })
                                     }
                                     onRemove={handleRemove}
+                                    onUpdate={loadData}
                                   />
                                 )
                               })}

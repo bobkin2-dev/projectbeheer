@@ -1,6 +1,9 @@
-import React from 'react'
+import React, { useState } from 'react'
+import { supabase } from '../../supabase'
 
-export const PlanningBlok = ({ blok, project, order, onDragStart, onRemove, compact = false }) => {
+export const PlanningBlok = ({ blok, project, order, onDragStart, onRemove, onUpdate, compact = false }) => {
+  const [editing, setEditing] = useState(false)
+  const [notitieInput, setNotitieInput] = useState(blok.notitie || '')
   const kleur = project?.kleur || '#6b7280'
   const isMarge = blok.is_marge
   const isSpoed = blok.is_spoed
@@ -48,8 +51,38 @@ export const PlanningBlok = ({ blok, project, order, onDragStart, onRemove, comp
         </div>
       )}
 
-      {blok.notitie && !compact && (
-        <div className="text-[10px] opacity-60 mt-0.5 truncate italic">{blok.notitie}</div>
+      {/* Notitie: klik om te bewerken */}
+      {!compact && !editing && (
+        <div
+          onClick={(e) => { e.stopPropagation(); setEditing(true) }}
+          className={`text-[10px] mt-0.5 truncate cursor-text ${blok.notitie ? 'opacity-70 italic' : 'opacity-0 group-hover:opacity-40'}`}
+        >
+          {blok.notitie || '+ notitie'}
+        </div>
+      )}
+
+      {editing && (
+        <input
+          type="text"
+          value={notitieInput}
+          onChange={(e) => setNotitieInput(e.target.value)}
+          onBlur={async () => {
+            setEditing(false)
+            if (notitieInput !== (blok.notitie || '')) {
+              await supabase.from('planning_blokken').update({ notitie: notitieInput || null }).eq('id', blok.id)
+              onUpdate?.()
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.target.blur()
+            if (e.key === 'Escape') { setNotitieInput(blok.notitie || ''); setEditing(false) }
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          autoFocus
+          placeholder="notitie..."
+          className="w-full mt-0.5 px-1 py-0.5 text-[10px] rounded bg-white/20 text-white placeholder-white/50 outline-none border border-white/30 focus:border-white/60"
+        />
       )}
 
       {/* Remove knop (bij hover) */}
