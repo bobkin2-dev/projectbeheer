@@ -4,7 +4,8 @@ import { supabase } from '../../supabase'
 export const PlanningBlok = ({ blok, project, order, onDragStart, onRemove, onUpdate, compact = false }) => {
   const [editing, setEditing] = useState(false)
   const [notitieInput, setNotitieInput] = useState(blok.notitie || '')
-  const kleur = project?.kleur || '#6b7280'
+  const isVrij = !blok.order_id && !blok.is_marge
+  const kleur = isVrij ? '#6b7280' : (project?.kleur || '#6b7280')
   const isMarge = blok.is_marge
   const isSpoed = blok.is_spoed
 
@@ -30,8 +31,8 @@ export const PlanningBlok = ({ blok, project, order, onDragStart, onRemove, onUp
         e.dataTransfer.effectAllowed = 'move'
         onDragStart?.(blok)
       }}
-      className={`rounded-lg p-2 text-white text-xs font-medium cursor-grab active:cursor-grabbing active:opacity-80 transition-all hover:scale-[1.03] hover:shadow-lg hover:z-10 relative group ${isSpoed ? 'ring-2 ring-red-400 ring-offset-1' : ''}`}
-      style={{ background: kleur, borderLeft: isSpoed ? '4px solid #dc2626' : `4px solid ${kleur}` }}
+      className={`rounded-lg p-2 text-white text-xs font-medium cursor-grab active:cursor-grabbing active:opacity-80 transition-all hover:scale-[1.03] hover:shadow-lg hover:z-10 relative group ${isSpoed ? 'ring-2 ring-red-400 ring-offset-1' : ''} ${isVrij ? 'border-2 border-dashed border-gray-400' : ''}`}
+      style={{ background: kleur, borderLeft: isSpoed ? '4px solid #dc2626' : isVrij ? undefined : `4px solid ${kleur}` }}
       data-blok-id={blok.id}
     >
       {/* Drag handle */}
@@ -40,15 +41,19 @@ export const PlanningBlok = ({ blok, project, order, onDragStart, onRemove, onUp
       <div className="flex justify-between items-start pr-4">
         <span className="truncate">
           {isSpoed && '🚨 '}
-          {project?.naam || 'Geen project'}
+          {isVrij ? (blok.notitie || 'Vrij blok') : (project?.naam || 'Geen project')}
         </span>
         <span className="bg-white/20 px-1 rounded text-[10px] flex-shrink-0 ml-1">{blok.uren}u</span>
       </div>
 
-      {!compact && order && (
+      {!compact && !isVrij && order && (
         <div className="text-[10px] opacity-80 mt-0.5 truncate">
           {order.naam}
         </div>
+      )}
+
+      {isVrij && (
+        <div className="text-[10px] opacity-60 mt-0.5">nog toe te wijzen</div>
       )}
 
       {/* Notitie: klik om te bewerken */}
