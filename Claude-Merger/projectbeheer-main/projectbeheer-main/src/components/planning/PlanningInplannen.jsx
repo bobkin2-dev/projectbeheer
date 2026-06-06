@@ -21,8 +21,9 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
   const [voorkeurMedewerker, setVoorkeurMedewerker] = useState('')
   const [toonWeekend, setToonWeekend] = useState(false)
   const [gebruikFlex, setGebruikFlex] = useState(false)
-  const [bezettingMap, setBezettingMap] = useState({}) // capacity map na voorstel
-  const [bestaande, setBestaande] = useState([]) // bestaande blokken voor marge-check
+  const [bezettingMap, setBezettingMap] = useState({})
+  const [bestaande, setBestaande] = useState([])
+  const [vroegsteEind, setVroegsteEind] = useState(null) // berekende vroegst mogelijke einddatum
 
   // Load orders for selected project
   useEffect(() => {
@@ -57,6 +58,72 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
     }
     return count
   }
+
+  // Bereken vroegst mogelijke einddatum
+  useEffect(() => {
+    if (!selectedOrder || !(selectedOrder.begrote_uren > 0)) { setVroegsteEind(null); return }
+
+    const berekenVroegste = async () => {
+      const uren = selectedOrder.begrote_uren
+      const beschikbaar = voorkeurMedewerker
+        ? medewerkers.filter(m => m.id === voorkeurMedewerker)
+        : medewerkers.filter(m => m.actief && (gebruikFlex || !m.is_flex))
+      if (beschikbaar.length === 0) { setVroegsteEind(null); return }
+
+      // Laad bezetting
+      const zoekEind = new Date(startDatum)
+      zoekEind.setDate(zoekEind.getDate() + 90)
+      const { data: bestaandeBlokken } = await supabase
+        .from('planning_blokken')
+        .select('datum, medewerker_id, uren, is_marge')
+        .gte('datum', startDatum)
+        .lte('datum', zoekEind.toISOString().split('T')[0])
+
+      const bezetting = {}
+      ;(bestaandeBlokken || []).forEach(b => {
+        const key = `${b.datum}-${b.medewerker_id}`
+        bezetting[key] = (bezetting[key] || 0) + b.uren
+      })
+
+      let rest = uren
+      let currentDate = new Date(startDatum + 'T12:00:00')
+      let laatsteDatum = startDatum
+
+      while (rest > 0) {
+        const dag = currentDate.getDay()
+        const isWerkdag = dag >= 1 && dag <= 5
+        const isWeekend = dag === 0 || dag === 6
+        const planbaar = isWerkdag || (isWeekend && toonWeekend)
+
+        if (planbaar) {
+          const datum = currentDate.toISOString().split('T')[0]
+          for (const mw of beschikbaar) {
+            if (rest <= 0) break
+            const maxU = mw.uren_per_dag || 8
+            const key = `${datum}-${mw.id}`
+            const bezet = bezetting[key] || 0
+            const vrij = maxU - bezet
+            const isMarge = (bestaandeBlokken || []).some(b =>
+              b.datum === datum && b.medewerker_id === mw.id && b.is_marge
+            )
+            if (vrij > 0 && !isMarge) {
+              const u = Math.min(vrij, rest)
+              bezetting[key] = bezet + u
+              rest -= u
+              laatsteDatum = datum
+            }
+          }
+        }
+
+        currentDate.setDate(currentDate.getDate() + 1)
+        if ((currentDate - new Date(startDatum + 'T12:00:00')) / 86400000 > 90) break
+      }
+
+      setVroegsteEind(rest <= 0 ? laatsteDatum : null)
+    }
+
+    berekenVroegste()
+  }, [selectedOrder, startDatum, voorkeurMedewerker, gebruikFlex, toonWeekend, medewerkers])
 
   // Generate planning voorstel
   const genereerVoorstel = async () => {
@@ -391,6 +458,21 @@ export const PlanningInplannen = ({ projecten, medewerkers, onClose, onGepland }
                         />
                       </div>
                     </div>
+
+                    {/* Vroegst mogelijke einddatum suggestie */}
+                    {vroegsteEind && (
+                      <div className="col-span-2 flex items-center gap-2 mt-1">
+                        <span className="text-[10px] text-blue-500">Vroegst klaar:</span>
+                        <button
+                          type="button"
+                          onClick={() => setEindDatum(vroegsteEind)}
+                          className="text-[10px] font-medium text-blue-700 bg-blue-100 hover:bg-blue-200 px-2 py-0.5 rounded transition-colors"
+                        >
+                          {new Date(vroegsteEind + 'T12:00:00').toLocaleDateString('nl-BE', { weekday: 'short', day: 'numeric', month: 'short' })}
+                          {eindDatum !== vroegsteEind && ' ← klik om over te nemen'}
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <div>
