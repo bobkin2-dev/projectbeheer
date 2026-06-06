@@ -31,6 +31,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
   const [toastMsg, setToastMsg] = useState(null)
   const [aantalWeken, setAantalWeken] = useState(3)
   const [snelBlok, setSnelBlok] = useState(null) // { datum, medewerkerId, medewerkerNaam, urenVrij }
+  const [geplandPerOrder, setGeplandPerOrder] = useState({}) // { orderId: totaalUrenGepland }
 
   // Medewerker volgorde aanpassen
   const verplaatsMedewerker = async (mwId, richting) => {
@@ -107,11 +108,25 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
           const ordersMap = {}
           ordersData.forEach(o => { ordersMap[o.id] = o })
           setOrders(ordersMap)
+
+          // Laad totaal geplande uren per order (over ALLE weken)
+          const { data: alleBlokkenVoorOrders } = await supabase
+            .from('planning_blokken')
+            .select('order_id, uren')
+            .in('order_id', orderIds)
+
+          const totalen = {}
+          ;(alleBlokkenVoorOrders || []).forEach(b => {
+            if (b.order_id) totalen[b.order_id] = (totalen[b.order_id] || 0) + (b.uren || 0)
+          })
+          setGeplandPerOrder(totalen)
         } else {
           setOrders({})
+          setGeplandPerOrder({})
         }
       } else {
         setOrders({})
+        setGeplandPerOrder({})
       }
     } catch (err) {
       console.error('Onverwachte fout bij laden:', err)
@@ -453,6 +468,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
                                     blok={blok}
                                     project={project}
                                     order={order}
+                                    totaalGepland={blok.order_id ? geplandPerOrder[blok.order_id] : null}
                                     onDragStart={() =>
                                       setDragState({ blokId: blok.id, overCell: null })
                                     }

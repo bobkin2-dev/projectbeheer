@@ -1,9 +1,12 @@
 import React, { useState } from 'react'
 import { supabase } from '../../supabase'
 
-export const PlanningBlok = ({ blok, project, order, onDragStart, onRemove, onUpdate, compact = false }) => {
+export const PlanningBlok = ({ blok, project, order, totaalGepland, onDragStart, onRemove, onUpdate, compact = false }) => {
   const [editing, setEditing] = useState(false)
   const [notitieInput, setNotitieInput] = useState(blok.notitie || '')
+
+  const begroteUren = order?.begrote_uren || 0
+  const isOnvolledig = order && begroteUren > 0 && totaalGepland != null && totaalGepland < begroteUren
   const isVrij = !blok.order_id && !blok.is_marge
   const kleur = isVrij ? '#6b7280' : (project?.kleur || '#6b7280')
   const isMarge = blok.is_marge
@@ -54,6 +57,21 @@ export const PlanningBlok = ({ blok, project, order, onDragStart, onRemove, onUp
 
       {isVrij && (
         <div className="text-[10px] opacity-60 mt-0.5">nog toe te wijzen</div>
+      )}
+
+      {/* Voortgang: toon als order niet volledig ingepland */}
+      {!compact && !isVrij && order && begroteUren > 0 && totaalGepland != null && (
+        <div className="mt-1">
+          <div className="bg-white/20 rounded-full h-1 w-full">
+            <div
+              className={`h-1 rounded-full ${isOnvolledig ? 'bg-amber-300' : 'bg-white'}`}
+              style={{ width: `${Math.min(Math.round((totaalGepland / begroteUren) * 100), 100)}%` }}
+            />
+          </div>
+          <div className={`text-[9px] mt-0.5 ${isOnvolledig ? 'text-amber-200 font-medium' : 'opacity-50'}`}>
+            {totaalGepland}/{begroteUren}u {isOnvolledig && '⚠️'}
+          </div>
+        </div>
       )}
 
       {/* Notitie: klik om te bewerken */}
