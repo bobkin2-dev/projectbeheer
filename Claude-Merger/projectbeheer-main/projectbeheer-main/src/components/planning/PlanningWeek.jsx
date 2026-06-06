@@ -317,7 +317,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
         <div className="flex items-center gap-3">
           {/* Aantal weken selector */}
           <div className="flex bg-gray-100 p-0.5 rounded-lg">
-            {[1, 2, 3].map(n => (
+            {[1, 2, 3, 6].map(n => (
               <button
                 key={n}
                 onClick={() => setAantalWeken(n)}
