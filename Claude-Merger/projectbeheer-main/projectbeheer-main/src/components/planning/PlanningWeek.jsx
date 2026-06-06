@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../supabase'
 import { PlanningBlok, DropZone } from './PlanningBlok'
 import { PlanningSnelBlok } from './PlanningSnelBlok'
+import { PlanningResterend } from './PlanningResterend'
 import { Toast } from '../ui/Toast'
 import { LoadingSpinner } from '../ui/LoadingSpinner'
 
@@ -32,6 +33,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
   const [aantalWeken, setAantalWeken] = useState(3)
   const [snelBlok, setSnelBlok] = useState(null) // { datum, medewerkerId, medewerkerNaam, urenVrij }
   const [geplandPerOrder, setGeplandPerOrder] = useState({}) // { orderId: totaalUrenGepland }
+  const [resterendModal, setResterendModal] = useState(null) // { order, rpiesterendUren }
 
   // Medewerker volgorde aanpassen
   const verplaatsMedewerker = async (mwId, richting) => {
@@ -474,6 +476,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
                                     }
                                     onRemove={handleRemove}
                                     onUpdate={loadData}
+                                    onPlanResterend={(ord, uren) => setResterendModal({ order: ord, rpiesterendUren: uren })}
                                   />
                                 )
                               })}
@@ -504,6 +507,16 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
       </div>
 
       {toastMsg && <Toast message={toastMsg} onDone={() => setToastMsg(null)} />}
+
+      {resterendModal && (
+        <PlanningResterend
+          order={resterendModal.order}
+          rpiesterendUren={resterendModal.rpiesterendUren}
+          medewerkers={medewerkers}
+          onClose={() => setResterendModal(null)}
+          onGepland={() => { loadData(); setToastMsg('Resterende uren ingepland!') }}
+        />
+      )}
 
       {snelBlok && (
         <PlanningSnelBlok

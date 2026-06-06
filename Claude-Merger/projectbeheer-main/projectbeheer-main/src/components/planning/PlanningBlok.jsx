@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { supabase } from '../../supabase'
 
-export const PlanningBlok = ({ blok, project, order, totaalGepland, onDragStart, onRemove, onUpdate, compact = false }) => {
+export const PlanningBlok = ({ blok, project, order, totaalGepland, onDragStart, onRemove, onUpdate, onPlanResterend, compact = false }) => {
   const [editing, setEditing] = useState(false)
   const [notitieInput, setNotitieInput] = useState(blok.notitie || '')
 
@@ -68,8 +68,17 @@ export const PlanningBlok = ({ blok, project, order, totaalGepland, onDragStart,
               style={{ width: `${Math.min(Math.round((totaalGepland / begroteUren) * 100), 100)}%` }}
             />
           </div>
-          <div className={`text-[9px] mt-0.5 ${isOnvolledig ? 'text-amber-200 font-medium' : 'opacity-50'}`}>
-            {totaalGepland}/{begroteUren}u {isOnvolledig && '⚠️'}
+          <div className={`text-[9px] mt-0.5 flex justify-between items-center ${isOnvolledig ? 'text-amber-200 font-medium' : 'opacity-50'}`}>
+            <span>{totaalGepland}/{begroteUren}u</span>
+            {isOnvolledig && onPlanResterend && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onPlanResterend(order, begroteUren - totaalGepland) }}
+                className="bg-amber-400 text-amber-900 px-1.5 py-0.5 rounded text-[8px] font-bold hover:bg-amber-300 transition-colors"
+                title={`Plan resterende ${begroteUren - totaalGepland}u in`}
+              >
+                +{begroteUren - totaalGepland}u plannen
+              </button>
+            )}
           </div>
         </div>
       )}
