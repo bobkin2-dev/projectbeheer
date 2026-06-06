@@ -217,7 +217,7 @@ export default function App() {
                     <>
                       <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">Actief ({actieveProjecten.length})</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
-                        {actieveProjecten.map(p => <ProjectCard key={p.id} project={p} onClick={() => setSelectedProject(p)} />)}
+                        {actieveProjecten.map(p => <ProjectCard key={p.id} project={p} onClick={() => setSelectedProject(p)} onToggleActief={loadData} />)}
                       </div>
                     </>
                   )}
@@ -227,7 +227,7 @@ export default function App() {
                     <>
                       <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Non-actief ({nonActieveProjecten.length})</h3>
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {nonActieveProjecten.map(p => <ProjectCard key={p.id} project={p} onClick={() => setSelectedProject(p)} />)}
+                        {nonActieveProjecten.map(p => <ProjectCard key={p.id} project={p} onClick={() => setSelectedProject(p)} onToggleActief={loadData} />)}
                       </div>
                     </>
                   )}
