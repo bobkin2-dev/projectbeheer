@@ -185,6 +185,70 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
     }
   }
 
+  // Kopieer blok naar eerstvolgende vrije dag
+  const handleKopieer = async (blok) => {
+    try {
+      // Zoek eerstvolgende werkdag met vrije capaciteit voor dezelfde medewerker
+      const vandaag = new Date().toISOString().split('T')[0]
+      const zoekEind = new Date()
+      zoekEind.setDate(zoekEind.getDate() + 30)
+
+      const { data: bestaande } = await supabase
+        .from('planning_blokken')
+        .select('datum, medewerker_id, uren')
+        .eq('medewerker_id', blok.medewerker_id)
+        .gte('datum', vandaag)
+        .lte('datum', zoekEind.toISOString().split('T')[0])
+
+      const bezetting = {}
+      ;(bestaande || []).forEach(b => {
+        bezetting[b.datum] = (bezetting[b.datum] || 0) + b.uren
+      })
+
+      const mw = medewerkers.find(m => m.id === blok.medewerker_id)
+      const maxUren = mw?.uren_per_dag || 8
+
+      // Zoek eerste dag met genoeg ruimte
+      let currentDate = new Date(vandaag + 'T12:00:00')
+      let gevonden = null
+
+      for (let d = 0; d < 30; d++) {
+        const dag = currentDate.getDay()
+        if (dag >= 1 && dag <= 5) { // werkdagen
+          const datum = currentDate.toISOString().split('T')[0]
+          const bezet = bezetting[datum] || 0
+          if (bezet + blok.uren <= maxUren) {
+            gevonden = datum
+            break
+          }
+        }
+        currentDate.setDate(currentDate.getDate() + 1)
+      }
+
+      if (!gevonden) {
+        setToastMsg('Geen vrij slot gevonden in de komende 30 dagen')
+        return
+      }
+
+      const { error } = await supabase.from('planning_blokken').insert({
+        order_id: blok.order_id,
+        medewerker_id: blok.medewerker_id,
+        datum: gevonden,
+        uren: blok.uren,
+        is_spoed: false,
+        is_marge: false,
+        notitie: blok.notitie,
+      })
+      if (error) throw error
+
+      loadData()
+      const dagLabel = new Date(gevonden + 'T12:00:00').toLocaleDateString('nl-BE', { weekday: 'short', day: 'numeric', month: 'short' })
+      setToastMsg(`Blok gekopieerd naar ${dagLabel}`)
+    } catch (e) {
+      alert('Fout bij kopiëren: ' + e.message)
+    }
+  }
+
   const handleRemove = async (blokId) => {
     try {
       const { error } = await supabase
@@ -476,6 +540,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
                                     }
                                     onRemove={handleRemove}
                                     onUpdate={loadData}
+                                    onKopieer={handleKopieer}
                                     onPlanResterend={(ord, uren) => setResterendModal({ order: ord, rpiesterendUren: uren })}
                                   />
                                 )
