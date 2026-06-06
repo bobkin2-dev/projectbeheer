@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../supabase'
 import { PlanningBlok, DropZone } from './PlanningBlok'
+import { PlanningSnelBlok } from './PlanningSnelBlok'
 import { Toast } from '../ui/Toast'
 import { LoadingSpinner } from '../ui/LoadingSpinner'
 
@@ -29,6 +30,7 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
   const [dragState, setDragState] = useState(null)
   const [toastMsg, setToastMsg] = useState(null)
   const [aantalWeken, setAantalWeken] = useState(3)
+  const [snelBlok, setSnelBlok] = useState(null) // { datum, medewerkerId, medewerkerNaam, urenVrij }
 
   // Medewerker volgorde aanpassen
   const verplaatsMedewerker = async (mwId, richting) => {
@@ -447,11 +449,17 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
                                 )
                               })}
 
-                              {/* Drop zone for remaining capacity */}
+                              {/* Drop zone for remaining capacity — klik om blok toe te voegen */}
                               <DropZone
                                 medewerkerUrenPerDag={medewerker.uren_per_dag || 8}
                                 urenGepland={urenGepland}
                                 isDragOver={isDragOver}
+                                onClick={() => setSnelBlok({
+                                  datum,
+                                  medewerkerId: medewerker.id,
+                                  medewerkerNaam: medewerker.naam,
+                                  urenVrij: (medewerker.uren_per_dag || 8) - urenGepland
+                                })}
                               />
                             </div>
                           </td>
@@ -467,6 +475,18 @@ export const PlanningWeek = ({ projecten, medewerkers, onOpenInplannen, onOpenSp
       </div>
 
       {toastMsg && <Toast message={toastMsg} onDone={() => setToastMsg(null)} />}
+
+      {snelBlok && (
+        <PlanningSnelBlok
+          datum={snelBlok.datum}
+          medewerkerId={snelBlok.medewerkerId}
+          medewerkerNaam={snelBlok.medewerkerNaam}
+          urenVrij={snelBlok.urenVrij}
+          projecten={projecten}
+          onClose={() => setSnelBlok(null)}
+          onToegevoegd={() => { loadData(); setToastMsg('Blok toegevoegd!') }}
+        />
+      )}
     </div>
   )
 }
