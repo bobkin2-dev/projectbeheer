@@ -84,6 +84,7 @@ export default function App() {
   }, [loadData])
 
   const [showProjectModal, setShowProjectModal] = useState(false)
+  const [projectZoek, setProjectZoek] = useState('')
   const [showInplannen, setShowInplannen] = useState(false)
   const [showSpoed, setShowSpoed] = useState(false)
   const [planningRefreshKey, setPlanningRefreshKey] = useState(0)
@@ -189,11 +190,27 @@ export default function App() {
         ) : (
           <>
             {view === 'projecten' && (() => {
-              const actieveProjecten = projecten.filter(p => p.actief !== false)
-              const nonActieveProjecten = projecten.filter(p => p.actief === false)
+              const zoek = projectZoek.toLowerCase()
+              const gefilterd = projecten.filter(p => {
+                if (!zoek) return true
+                return (p.naam || '').toLowerCase().includes(zoek) ||
+                       (p.klant || '').toLowerCase().includes(zoek) ||
+                       (p.project_nummer || '').toLowerCase().includes(zoek)
+              })
+              const actieveProjecten = gefilterd.filter(p => p.actief !== false)
+              const nonActieveProjecten = gefilterd.filter(p => p.actief === false)
               return (
                 <div>
-                  <button onClick={() => setShowProjectModal(true)} className="mb-6 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">+ Nieuw Project</button>
+                  <div className="flex gap-3 mb-6 items-center">
+                    <input
+                      type="text"
+                      value={projectZoek}
+                      onChange={(e) => setProjectZoek(e.target.value)}
+                      placeholder="🔍 Zoek project, klant of nummer..."
+                      className="flex-1 border rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    />
+                    <button onClick={() => setShowProjectModal(true)} className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium whitespace-nowrap">+ Nieuw Project</button>
+                  </div>
 
                   {/* Actieve projecten */}
                   {actieveProjecten.length > 0 && (
@@ -216,6 +233,7 @@ export default function App() {
                   )}
 
                   {projecten.length === 0 && <div className="text-center py-12 text-gray-500">Nog geen projecten. Maak je eerste project aan!</div>}
+                  {projecten.length > 0 && gefilterd.length === 0 && <div className="text-center py-12 text-gray-400">Geen projecten gevonden voor "{projectZoek}"</div>}
                 </div>
               )
             })()}
