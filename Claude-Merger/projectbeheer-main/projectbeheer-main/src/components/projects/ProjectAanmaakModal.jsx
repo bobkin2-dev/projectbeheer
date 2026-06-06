@@ -90,10 +90,20 @@ export const ProjectAanmaakModal = ({ onClose, onCreate }) => {
           <div className="flex gap-4">
             <div className="flex-1">
               <label className="block text-sm font-medium text-gray-700 mb-1">Kleur</label>
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {['#3B82F6','#8B5CF6','#EC4899','#EF4444','#F59E0B','#10B981','#06B6D4','#6366F1','#F97316','#14B8A6','#A855F7','#84CC16'].map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setForm({...form, kleur: c})}
+                    className={`w-7 h-7 rounded-full transition-all ${form.kleur === c ? 'ring-2 ring-offset-2 ring-gray-400 scale-110' : 'hover:scale-110'}`}
+                    style={{ background: c }}
+                  />
+                ))}
+              </div>
               <div className="flex gap-2 items-center">
                 <input type="color" value={form.kleur} onChange={e => setForm({...form, kleur: e.target.value})}
-                  className="w-10 h-10 rounded cursor-pointer border" />
-                <span className="text-xs text-gray-400">{form.kleur}</span>
+                  className="w-8 h-8 rounded cursor-pointer border" />
+                <span className="text-[10px] text-gray-400">RGB kiezer</span>
               </div>
             </div>
             <div className="flex-1">
